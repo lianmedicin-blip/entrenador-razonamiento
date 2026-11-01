@@ -32,7 +32,7 @@ LETRAS = "ABCDE"
 FORMAS = ["triángulo", "cuadrado", "pentágono", "círculo", "estrella"]
 TAMANOS = ["pequeño", "mediano", "grande"]
 COLORES = ["blanco", "gris", "negro"]
-COLOR_HEX = ["white", "#9a9a9a", "black"]
+COLOR_HEX = ["white", "#808080", "black"]
 RADIOS = [0.05, 0.085, 0.12]
 NIVEL_N = {"F": 1, "M": 2, "D": 3, "MD": 4}
 NOMBRE_NIVEL = {"F": "fácil", "M": "media", "D": "difícil", "MD": "muy difícil"}
@@ -277,6 +277,7 @@ def gen_matriz(nivel, rng, forzar=None):
         return {
             "tipo": "matriz", "nivel": nivel, "stem": {"matriz": m},
             "opciones": [correcta] + [o for o, _ in eleg], "correcta": 0,
+            "fallos": [None] + ["; ".join(f"{a}:{reglas[a]}" for a in cam) for _, cam in eleg],
             "trampa": None if ti is None else (ti + 1, tp),
             "regla": "; ".join(f"{a}:{reglas[a]}" for a in var) or "constantes",
             "explicacion": [_m_desc(a, reglas[a], ex[a]) for a in var] or ["Todo igual dentro de cada fila."],
@@ -357,6 +358,8 @@ def gen_serie(nivel, rng, forzar=None):
         return {
             "tipo": "serie", "nivel": nivel, "stem": {"serie": celdas[:5]},
             "opciones": [correcta] + [o for o, _ in eleg], "correcta": 0,
+            "fallos": [None] + ["; ".join(next((r for r in regla if r.startswith(a + ":")), "serie:" + a) for a in cam)
+                                for _, cam in eleg],
             "trampa": None if ti is None else (ti + 1, tp),
             "regla": "; ".join(regla) or "constante", "explicacion": desc or ["Todo constante."], "valida": valida,
         }
@@ -400,6 +403,8 @@ def gen_rotacion(nivel, rng, forzar=None):
         return {
             "tipo": "rotacion", "nivel": nivel, "stem": {"rot": celdas[:5]},
             "opciones": [correcta] + [o for o, _ in eleg], "correcta": 0,
+            "fallos": [None] + ["; ".join("rotacion:" + {"ang": "giro", "pos": "punto", "col": "color"}[a] for a in cam)
+                                for _, cam in eleg],
             "trampa": None if ti is None else (ti + 1, tp),
             "regla": f"giro {da * 45}°; punto {dp:+d}" + (f"; color ciclo{pcol}" if pcol else ""),
             "explicacion": desc, "valida": valida,
@@ -452,32 +457,44 @@ def gen_superposicion(nivel, rng, forzar=None):
                     return True
             return False
 
-        cands = []
+        # distractores: resultados de OTRAS operaciones y variantes de un punto de esos resultados
+        # (no solo de la correcta), para que la respuesta no sea la opcion "mas central"
+        pool = {}
+        otros = []
         for k, (f, _) in OPS.items():
-            s = frozenset(f(filas[2][0], filas[2][1]))
-            if s and s != correcta:
-                cands.append((s, f"aplicar «{k}» en vez de la regla correcta"))
-        for _k in range(6):
-            x = rng.randrange(total)
-            s = frozenset(correcta ^ {x})
-            if s and s != correcta:
-                cands.append((s, "le sobra o le falta un punto"))
-        rng.shuffle(cands)
-        eleg, vistos = [], {correcta}
-        for s, motivo in cands:
-            if s in vistos or valida({"puntos": s}):
-                continue
-            vistos.add(s)
-            eleg.append(({"puntos": s}, motivo))
-            if len(eleg) == 4:
-                break
-        if len(eleg) < 4:
+            r = frozenset(f(filas[2][0], filas[2][1]))
+            if r and r != correcta and not valida({"puntos": r}):
+                pool.setdefault(r, f"aplicar «{k}» en vez de la regla correcta")
+                otros.append(r)
+        for base in otros + [correcta]:
+            for x in rng.sample(range(total), min(total, 6)):
+                r = frozenset(base ^ {x})
+                if r and r != correcta and not valida({"puntos": r}):
+                    pool.setdefault(r, "le sobra o le falta un punto" if base == correcta else "otra regla y un punto distinto")
+        if len(pool) < 4 or not otros:
             continue
+        elegido = None
+        for _t in range(60):
+            cand = rng.sample(list(pool), 4)
+            if not any(c in otros for c in cand):
+                continue
+            todas = [correcta] + cand
+            dist = [sum(len(x ^ y) for y in todas) for x in todas]
+            centro = [i for i, d in enumerate(dist) if d == min(dist)]
+            lejos = [i for i, d in enumerate(dist) if d == max(dist)]
+            if (centro == [0] or lejos == [0]) and rng.random() > 0.7:
+                continue
+            elegido = cand
+            break
+        if elegido is None:
+            continue
+        eleg = [({"puntos": c}, pool[c]) for c in elegido]
         trampa = next(((i + 1, m) for i, (_, m) in enumerate(eleg) if m.startswith("aplicar")), None)
         stem = [[{"puntos": filas[r][c]} if (r, c) != (2, 2) else None for c in range(3)] for r in range(3)]
         return {
             "tipo": "superposicion", "nivel": nivel, "stem": {"dots": stem, "n": n},
             "opciones": [{"puntos": correcta}] + [o for o, _ in eleg], "correcta": 0, "trampa": trampa,
+            "fallos": [None] + [f"superposicion:{op}"] * 4,
             "regla": f"superposicion:{op}", "explicacion": [f"En cada fila, la tercera casilla: {OPS[op][1]}."],
             "valida": valida, "n": n,
         }
@@ -547,6 +564,9 @@ def gen_domino(nivel, rng, forzar=None):
         return {
             "tipo": "domino", "nivel": nivel, "stem": {"dom": celdas[:5]},
             "opciones": opciones, "correcta": 0, "trampa": trampa,
+            "fallos": [None] + ["; ".join("domino:" + a for a in cam) for _, cam in eleg] +
+                      (["domino:orden de las mitades"] if len(opciones) > len(eleg) + 1 and trampa and "revés" in trampa[1]
+                       else ["domino:serie"]) * (len(opciones) - len(eleg) - 1),
             "regla": f"domino arriba:{modos[0]} abajo:{modos[1]}",
             "explicacion": [f"Mitad de arriba: {darr}.", f"Mitad de abajo: {daba}.",
                             "Recuerda: en el dominó después del 6 viene el 0 (blanco)."],
@@ -588,8 +608,9 @@ def gen_intrusa(nivel, rng, forzar=None):
                 items[i][a] = vals[i]
         if rasgo == "paridad":
             par = rng.choice([0, 1])
-            grupo = rng.sample([2, 4, 6, 8] if par == 0 else [1, 3, 5, 7], 4)
-            fuera = rng.choice([1, 3, 5, 7] if par == 0 else [2, 4, 6, 8])
+            impares = [3, 5, 7, 9]
+            grupo = rng.sample([2, 4, 6, 8] if par == 0 else impares, 4)
+            fuera = rng.choice(impares if par == 0 else [2, 4, 6, 8])
             it = iter(grupo)
             cant = [next(it) if i != intr else fuera for i in range(5)]
         else:
@@ -598,6 +619,8 @@ def gen_intrusa(nivel, rng, forzar=None):
             items[i]["cantidad"] = cant[i]
         rasgos = {"forma": [x["forma"] for x in items], "color": [x["color"] for x in items],
                   "tamano": [x["tamano"] for x in items], "cantidad": cant, "paridad": [c % 2 for c in cant]}
+        extra = {"primo": [c in (2, 3, 5, 7) for c in cant], "multiplo3": [c % 3 == 0 for c in cant],
+                 "cuadrado": [c in (1, 4, 9) for c in cant], "mayor5": [c > 5 for c in cant]}
         ok = len({clave(x) for x in items}) == 5
         for nombre, vals in rasgos.items():
             sing = [i for i, x in enumerate(vals) if vals.count(x) == 1]
@@ -605,6 +628,10 @@ def gen_intrusa(nivel, rng, forzar=None):
                 ok = ok and sing == [intr]
             else:
                 ok = ok and len(sing) in (0, 5)
+        for vals in extra.values():
+            sing = [i for i, x in enumerate(vals) if vals.count(x) == 1]
+            if sing and sing != [intr]:
+                ok = False
         if nivel in ("D", "MD") and len(set(cant)) < 4:
             ok = False
         if nivel == "MD" and len(set(rasgos["forma"])) < 2:
@@ -618,6 +645,7 @@ def gen_intrusa(nivel, rng, forzar=None):
                             " de figuras; las demás tienen cantidad " + ("par" if cant[intr] % 2 else "impar")}[rasgo]
         return {
             "tipo": "intrusa", "nivel": nivel, "stem": {}, "opciones": [items[i] for i in orden], "correcta": 0,
+            "fallos": [None] + [f"intrusa:{rasgo}"] * 4,
             "trampa": None, "regla": f"intrusa:{rasgo}", "explicacion": [f"La figura correcta {texto}."],
             "valida": None, "rasgos_ok": True,
         }
@@ -687,6 +715,7 @@ def gen_analogia(nivel, rng, forzar=None):
         return {
             "tipo": "analogia", "nivel": nivel, "stem": {"abc": [A, B, C]},
             "opciones": [resp] + [o for o, _ in eleg], "correcta": 0, "trampa": trampa,
+            "fallos": [None] + ["analogia: " + m for _, m in eleg],
             "regla": "analogia:" + "+".join(sorted(cambian)), "explicacion": desc, "valida": valida,
         }
     raise Fallo("analogia")
@@ -720,7 +749,7 @@ def figura(ax, forma, cx, cy, r, color):
     elif forma == 2:
         ax.add_patch(Polygon(poligono(5, cx, cy - 0.05 * r, 1.08 * r), **kw))
     else:
-        ax.add_patch(Polygon(estrella(cx, cy - 0.05 * r, 1.2 * r), **kw))
+        ax.add_patch(Polygon(estrella(cx, cy - 0.05 * r, 1.1 * r), **kw))
 
 
 def marco(ax, x0, y0, w, h):
@@ -822,7 +851,8 @@ def pagina_figura(pdf, numero, q):
     fig, ax = nueva_pagina()
     ax.text(0.6, 11.0, f"Pregunta {numero}", fontsize=20, fontweight="bold")
     ax.text(0.6, 10.6, INSTR[q["tipo"]], fontsize=10.5, color="#333333")
-    ax.text(0.6, 10.3, "Construye tu respuesta ANTES de mirar las opciones.", fontsize=9, color="#777777")
+    ax.text(0.6, 10.3, "Revisa cada rasgo: forma, color, tamaño, cantidad (par o impar)." if q["tipo"] == "intrusa"
+            else "Construye tu respuesta ANTES de mirar las opciones.", fontsize=9, color="#777777")
     t, s = q["tipo"], q["stem"]
     if t == "intrusa":
         L, sep = 1.3, 0.2
@@ -963,10 +993,24 @@ def construir(plan, salida):
             tipo, regla, nivel = it.get("tipo", "texto"), it.get("regla", ""), it.get("nivel", "")
             expl = [it.get("explicacion", "")]
             trampa = it.get("trampa", "")
+            fallo_letra = {}
         else:
             forz = None
             if it.get("forzar"):
-                forz = dict(p.split(":") for p in it["forzar"].split("+"))
+                forz = {}
+                for p in str(it["forzar"]).replace(";", "+").replace(",", "+").split("+"):
+                    p = p.strip()
+                    if not p:
+                        continue
+                    if ":" not in p:
+                        raise SystemExit(f"forzar mal escrito: {p} (usa atributo:regla)")
+                    a_, r_ = [x.strip() for x in p.split(":", 1)]
+                    if a_ not in MATRIZ_ATTR or r_ not in MATRIZ_ATTR[a_][2]:
+                        raise SystemExit(f"forzar no valido: {p}. Validos: " +
+                                         "; ".join(f"{k}: {', '.join(v[2])}" for k, v in MATRIZ_ATTR.items()))
+                    forz[a_] = r_
+                if it.get("tipo", "matriz") != "matriz":
+                    forz = None
             tipo = it.get("tipo", "matriz")
             nivel = it.get("nivel", "M")
             g = GENERADORES[tipo](nivel, rng, forz)
@@ -981,6 +1025,8 @@ def construir(plan, salida):
             for p, (k, _) in zip(pos_resto, resto):
                 mapa[k] = p
             g["opciones"] = nuevo
+            fallos = g.get("fallos") or [None] + [g["regla"]] * 4
+            fallo_letra = {LETRAS[mapa[k]]: (fallos[k] or g["regla"]) for k, _ in resto}
             q = dict(g)
             q["t"] = "figura"
             pid = f"F{prefijo}-{numero:02d}"
@@ -996,7 +1042,8 @@ def construir(plan, salida):
                     raise SystemExit(f"Fallo de unicidad en {pid}: {validas}")
         preguntas.append((numero, q))
         clave_out.append({"numero": numero, "id": pid, "tipo": tipo, "regla": regla, "nivel": nivel,
-                          "correcta": LETRAS[objetivo], "repaso_de": it.get("repaso_de", "")})
+                          "correcta": LETRAS[objetivo], "repaso_de": it.get("repaso_de", ""),
+                          "fallo_por_letra": fallo_letra})
         linea = f"{numero}. {LETRAS[objetivo]}  ({tipo}) " + " ".join(e for e in expl if e)
         if trampa:
             linea += " " + trampa
@@ -1038,6 +1085,7 @@ def autotest(n):
     rng = random.Random(7)
     fallos = 0
     sesgo = {}
+    sup = {}
     for tipo, gen in GENERADORES.items():
         aciertos_mayoria = 0
         total = 0
@@ -1053,10 +1101,24 @@ def autotest(n):
                     if validas != [g["correcta"]]:
                         fallos += 1
                         print("unicidad", tipo, nivel, validas)
+                if tipo == "superposicion":
+                    todas = [o["puntos"] for o in ops]
+                    dist = [sum(len(x ^ y) for y in todas) for x in todas]
+                    for nombre, objetivo in (("centro", min(dist)), ("lejos", max(dist))):
+                        cand = [k for k, d in enumerate(dist) if d == objetivo]
+                        sup[nombre] = sup.get(nombre, 0) + ((1 / len(cand)) if g["correcta"] in cand else 0)
+                    sup["n"] = sup.get("n", 0) + 1
                 if tipo == "intrusa":
                     feats = {"forma": [o["forma"] for o in ops], "color": [o["color"] for o in ops],
                              "tamano": [o["tamano"] for o in ops], "cantidad": [o["cantidad"] for o in ops],
                              "paridad": [o["cantidad"] % 2 for o in ops]}
+                    if g["nivel"] in ("D", "MD"):
+                        for f in (lambda c: c in (2, 3, 5, 7), lambda c: c % 3 == 0, lambda c: c in (1, 4, 9), lambda c: c > 5):
+                            v = [f(o["cantidad"]) for o in ops]
+                            sg = [i for i, x in enumerate(v) if v.count(x) == 1]
+                            if sg and sg != [g["correcta"]]:
+                                fallos += 1
+                                print("intrusa: rasgo numerico ambiguo", [o["cantidad"] for o in ops])
                     unicos = {i for v in feats.values() for i, x in enumerate(v) if v.count(x) == 1
                               and sum(1 for y in v if v.count(y) == 1) < 5}
                     if unicos != {g["correcta"]}:
@@ -1075,6 +1137,9 @@ def autotest(n):
             sesgo[tipo] = round(100 * aciertos_mayoria / total, 1)
     print("FALLOS:", fallos)
     print("Acierto adivinando por mayoría (azar = 20%):", sesgo)
+    if sup.get("n"):
+        print("Superposición, acierto eligiendo la más central / la más lejana (azar = 20%):",
+              round(100 * sup["centro"] / sup["n"], 1), "/", round(100 * sup["lejos"] / sup["n"], 1))
     return fallos
 
 
