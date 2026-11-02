@@ -143,7 +143,9 @@ async function pull() {
 }
 function authMsg(e) {
   const c = (e && e.code) || '';
-  if (c.includes('wrong-password') || c.includes('invalid-credential')) return 'Correo o contraseña incorrectos.';
+  if (c.includes('wrong-password') || c.includes('invalid-credential')) return 'Correo o contraseña incorrectos. Si es la primera vez, toca «Crear cuenta». Si ya la creaste y no recuerdas la contraseña, toca «Olvidé mi contraseña».';
+  if (c.includes('missing-password')) return 'Escribe la contraseña.';
+  if (c.includes('too-many-requests')) return 'Demasiados intentos. Espera unos minutos o usa «Olvidé mi contraseña».';
   if (c.includes('user-not-found')) return 'No existe una cuenta con ese correo. Toca «Crear cuenta».';
   if (c.includes('email-already-in-use')) return 'Ya existe una cuenta con ese correo. Toca «Entrar».';
   if (c.includes('weak-password')) return 'La contraseña debe tener al menos 6 caracteres.';
@@ -164,10 +166,19 @@ async function loginGoogle() {
     render();
   }
 }
+let AU_EMAIL = '', AU_OK = '';
 async function loginEmail(crear) {
   const em = document.getElementById('au-e').value.trim(), pw = document.getElementById('au-p').value;
+  AU_EMAIL = em; AU_OK = '';
   try { crear ? await FB.auth.createUserWithEmailAndPassword(em, pw) : await FB.auth.signInWithEmailAndPassword(em, pw); SYNC_ERR = ''; }
   catch (e) { SYNC_ERR = authMsg(e); render(); }
+}
+async function resetPass() {
+  const em = document.getElementById('au-e').value.trim(); AU_EMAIL = em;
+  if (!em) { SYNC_ERR = 'Escribe tu correo arriba y vuelve a tocar «Olvidé mi contraseña».'; return render(); }
+  try { await FB.auth.sendPasswordResetEmail(em); SYNC_ERR = ''; AU_OK = `Te enviamos un correo a ${em} para crear una contraseña nueva. Revisa también la carpeta de spam.`; }
+  catch (e) { SYNC_ERR = authMsg(e); }
+  render();
 }
 function cuentaHtml() {
   if (!FIREBASE_CONFIG) return '<p class="muted small" style="margin:0">La sincronización entre dispositivos todavía no está configurada.</p>';
@@ -176,16 +187,17 @@ function cuentaHtml() {
   if (USER) return `<p style="margin:0">✅ Conectado como <b>${esc(USER.email || 'tu cuenta')}</b></p><p class="muted small" style="margin:4px 0 0">Tu progreso se guarda en la nube y se comparte entre tus dispositivos.${LAST_SYNC ? ` Última sincronización: ${LAST_SYNC.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}.` : ''}</p>${err}
     <div class="row-actions"><button class="chip" id="au-sync">🔄 Sincronizar ahora</button><button class="chip" id="au-out">Cerrar sesión</button></div>`;
   return `<p class="muted small" style="margin:0 0 10px">Inicia sesión con la misma cuenta en tu celular y en tu computador para que tu progreso sea el mismo en los dos.</p>
-    <button class="btn primary" id="au-g" style="width:100%">Entrar con Google</button>
-    <p class="muted small" style="text-align:center;margin:12px 0 6px">o con correo y contraseña</p>
-    <label class="field" style="margin:4px 0">Correo<input type="text" id="au-e" inputmode="email" autocomplete="email"></label>
+    ${/iphone|ipad|ipod/i.test(navigator.userAgent) && isStandalone() ? '<p class="muted small" style="margin:0 0 6px">En la app del iPhone usa correo y contraseña (Google no permite entrar desde apps instaladas en iPhone). Usa el mismo correo y contraseña en tu computador.</p>' : `<button class="btn primary" id="au-g" style="width:100%">Entrar con Google</button>
+    <p class="muted small" style="text-align:center;margin:12px 0 6px">o con correo y contraseña</p>`}
+    <label class="field" style="margin:4px 0">Correo<input type="text" id="au-e" inputmode="email" autocomplete="email" autocapitalize="none" value="${esc(AU_EMAIL)}"></label>
     <label class="field" style="margin:4px 0">Contraseña<input type="password" id="au-p" autocomplete="current-password" class="pw"></label>
-    <div class="row-actions"><button class="chip" id="au-in">Entrar</button><button class="chip" id="au-new">Crear cuenta</button></div>${err}`;
+    <div class="row-actions"><button class="chip" id="au-in">Entrar</button><button class="chip" id="au-new">Crear cuenta</button><button class="link-btn" id="au-rs">Olvidé mi contraseña</button></div>${err}${AU_OK ? `<p class="small" style="color:var(--ok);margin:8px 0 0">${esc(AU_OK)}</p>` : ''}`;
 }
 function bindCuenta() {
   const g = document.getElementById('au-g'); if (g) g.onclick = loginGoogle;
   const i = document.getElementById('au-in'); if (i) i.onclick = () => loginEmail(false);
   const n = document.getElementById('au-new'); if (n) n.onclick = () => loginEmail(true);
+  const rs = document.getElementById('au-rs'); if (rs) rs.onclick = resetPass;
   const o = document.getElementById('au-out'); if (o) o.onclick = async () => { await FB.auth.signOut(); USER = null; render(); };
   const y = document.getElementById('au-sync'); if (y) y.onclick = async () => { y.textContent = 'Sincronizando…'; await pull(); };
 }
