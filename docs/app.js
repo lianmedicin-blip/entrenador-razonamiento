@@ -428,7 +428,7 @@ function renderHome() {
   const doneToday = S.sessions.filter(s => s.date === today && s.mode !== 'simulacro').reduce((a, s) => a + s.total, 0);
   const due = S.rev.filter(r => !r.done && r.due <= today).length;
   const streak = (() => { let n = 0, d = today; const days = new Set(S.sessions.map(s => s.date)); if (!days.has(d)) d = addDays(d, -1); while (days.has(d)) { n++; d = addDays(d, -1); } return n; })();
-  const greet = S.sessions.length ? (doneToday >= S.daily ? '¡Meta de hoy cumplida!' : 'Sigamos entrenando') : 'Bienvenido, Julián';
+  const greet = S.sessions.length ? (doneToday >= (S.goal || 100) ? '¡Meta de hoy cumplida!' : 'Sigamos entrenando') : 'Bienvenido, Julián';
   const resume = CUR && CUR.items ? `<button class="card action main" id="resume" style="margin-top:14px;border-color:var(--primary)"><span class="ico">${ICON.play}</span><div><b>Continuar ${CUR.mode === 'simulacro' ? 'el simulacro (el reloj sigue corriendo)' : 'donde ibas'}</b><span>${CUR.items.filter(x => x.ans !== null).length} de ${CUR.items.length} respondidas</span></div></button>` : '';
   const types = Object.entries(TIPOS).map(([t, info]) => {
     const a = accOf(t);
@@ -440,13 +440,13 @@ function renderHome() {
       <svg class="hero-deco" width="180" height="180" viewBox="0 0 100 100"><path d="M10 90 50 10l40 80z" fill="none" stroke="currentColor" stroke-width="8" stroke-linejoin="round"/><circle cx="50" cy="62" r="9" fill="currentColor"/></svg>
       <h1>${greet}</h1>
       <p>${dExam > 0 ? `Faltan ${dExam} días para tu examen.` : dExam === 0 ? 'Hoy es tu examen. ¡Tú puedes!' : 'Sigue practicando para la próxima versión.'}</p>
-      <div class="stats"><span class="pill">Hoy: ${Math.min(doneToday, 999)}/${S.daily} preguntas</span><span class="pill">🔥 Racha: ${streak} día${streak === 1 ? '' : 's'}</span></div>
+      <div class="stats"><span class="pill">Hoy: ${Math.min(doneToday, 999)}/${S.goal || 100} preguntas</span><span class="pill">🔥 Racha: ${streak} día${streak === 1 ? '' : 's'}</span></div>
     </section>
     ${resume}
     ${installCard()}
     ${homeAvisos(dExam, doneToday)}
     <div class="grid2">
-      <button class="card action main" id="practica"><span class="ico">${ICON.play}</span><div><b>Práctica de hoy</b><span>${S.daily} preguntas mezcladas, adaptadas a tu nivel · ~${Math.round(S.daily * 2.4)} min</span></div></button>
+      <button class="card action main" id="practica"><span class="ico">${ICON.play}</span><div><b>${doneToday ? 'Siguiente bloque' : 'Práctica de hoy'}</b><span>Bloque de ${S.daily} preguntas mezcladas, adaptadas a tu nivel · ~${Math.round(S.daily * 2.4)} min</span></div></button>
       <button class="card action" id="repaso"><span class="ico">${ICON.redo}</span><b>Repasar errores${due ? `<span class="badge">${due}</span>` : ''}</b><span>${due ? 'Preguntas nuevas sobre lo que fallaste' : 'No tienes repasos pendientes hoy'}</span></button>
       <button class="card action" id="simulacro"><span class="ico">${ICON.clock}</span><b>Simulacro</b><span>Completo (50 · 2 h) o corto (25 · 1 h), como el examen</span></button>
     </div>
@@ -495,7 +495,8 @@ function renderHome() {
 function homeAvisos(dExam, doneToday) {
   let h = '';
   if (S.plan && S.plan.h && doneToday === 0) h += `<div class="card note">📅 Tu plan: practicar a las <b>${esc(S.plan.h)}</b>${S.plan.l ? ` en <b>${esc(S.plan.l)}</b>` : ''}.</div>`;
-  if (doneToday >= S.daily) h += `<div class="card note good">✅ Meta de hoy cumplida. Repartir la práctica en varios días rinde más que hacer mucho en uno: si quieres más, haz como máximo una sesión corta después de un descanso.</div>`;
+  if (doneToday > 0 && doneToday < (S.goal || 100)) h += `<div class="card note">⏸ Llevas ${doneToday} de ${S.goal || 100}. Descansa al menos 1 hora entre bloques y, si en un bloque aciertas mucho menos que en el primero, para por hoy.</div>`;
+  if (doneToday >= (S.goal || 100)) h += `<div class="card note good">✅ Meta de hoy cumplida. Repartir la práctica en varios días rinde más que hacer mucho en uno: si quieres más, haz como máximo una sesión corta después de un descanso.</div>`;
   if (dExam >= 0 && dExam <= 3) h += `<div class="card note warn"><b>${dExam === 0 ? 'Hoy es el examen' : dExam === 1 ? 'Mañana es el examen' : 'Semana final'}</b>${dExam >= 2 ? ': menos cantidad y más repaso de errores. Haz la prueba ancla B.' : '.'} <button class="link-btn" id="proto">Ver protocolo del examen →</button></div>`;
   return h;
 }
@@ -914,7 +915,8 @@ function renderSettings() {
   $app.innerHTML = topBar(true, 'Ajustes') + `
     <div class="card">
       <label class="field">Fecha de tu examen<input type="date" id="exam" value="${S.exam}"></label>
-      <label class="field">Preguntas por práctica diaria<input type="number" id="daily" min="5" max="60" value="${S.daily}"></label>
+      <label class="field">Meta de preguntas al día<input type="number" id="goal" min="10" max="200" step="5" value="${S.goal || 100}"></label>
+      <label class="field">Preguntas por bloque de práctica<input type="number" id="daily" min="5" max="60" value="${S.daily}"></label>
       <label class="field" style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" id="think" ${S.thinkFirst !== false ? 'checked' : ''} style="width:20px;height:20px"> Pensar mi respuesta antes de ver las opciones (en práctica)</label>
       <label class="field">Apariencia
         <div class="tabs" style="margin:0">${['auto', 'light', 'dark'].map(m => `<button data-theme="${m}" class="${S.theme === m ? 'on' : ''}">${{ auto: 'Automática', light: 'Clara', dark: 'Oscura' }[m]}</button>`).join('')}</div></label>
@@ -937,6 +939,7 @@ function renderSettings() {
   bindGo();
   document.getElementById('exam').onchange = e => { S.exam = e.target.value || S.exam; save(); };
   document.getElementById('think').onchange = e => { S.thinkFirst = e.target.checked; save(); };
+  document.getElementById('goal').onchange = e => { const v = parseInt(e.target.value, 10); if (v >= 10 && v <= 200) { S.goal = v; save(); } };
   document.getElementById('daily').onchange = e => { const v = parseInt(e.target.value, 10); if (v >= 5 && v <= 60) { S.daily = v; save(); } };
   $app.querySelectorAll('[data-theme]').forEach(b => b.onclick = () => { S.theme = b.dataset.theme; save(); applyTheme(); renderSettings(); });
   document.getElementById('exp').onclick = () => {
