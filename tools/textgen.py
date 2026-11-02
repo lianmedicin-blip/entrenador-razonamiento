@@ -234,9 +234,9 @@ def gen_serie_letras(nivel, rng):
         kind = rng.choice(['inter_dist', 'pares_mix'])
     s = rng.randrange(27)
     if kind == 'paso':
-        k = rng.choice([2, 3, 4])
+        k = rng.choice([2, 3, 4, 5, -2, -3])
         idx = [s + k * i for i in range(7)]
-        exp = f"Se avanza {k} letras cada vez (cuenta la Ñ)."; regla = 'letras:paso constante'
+        exp = f"Se {'avanza' if k > 0 else 'retrocede'} {abs(k)} letras cada vez (cuenta la Ñ)."; regla = 'letras:paso constante'
     elif kind == 'atras':
         k = rng.choice([2, 3])
         idx = [s - k * i for i in range(7)]
@@ -471,6 +471,14 @@ def gen_algoritmo(nivel, rng):
         ans = x; cands = [x + 1, x - 1, x0, x * 2, x + 2]
         regla = 'algoritmo:secuencia'
         exp = ["Se ejecuta cada línea en orden, de arriba hacia abajo, actualizando x."]
+    elif nivel == 'M' and rng.random() < 0.4:
+        n, k, s0 = rng.randint(3, 6), rng.randint(1, 4), rng.randint(0, 5)
+        tot = s0 + sum(i * k for i in range(1, n + 1))
+        code = [f"s ← {s0}", f"para i desde 1 hasta {n}:", f"    s ← s + i × {k}" if k > 1 else "    s ← s + i", "mostrar s"]
+        ans = tot; cands = [tot - n * k, tot + (n + 1) * k, tot - s0, tot + 1, n * k + s0]
+        regla = 'algoritmo:repetir'
+        exp = [f"i toma los valores 1, 2, …, {n}; en cada vuelta se suma i × {k}.",
+               f"s = {s0} + " + ' + '.join(str(i * k) for i in range(1, n + 1)) + f" = {tot}."]
     elif nivel == 'M':
         x0, n, k = rng.randint(1, 5), rng.randint(3, 5), rng.choice([2, 3])
         c = rng.choice([0, 1, -1])
@@ -487,15 +495,22 @@ def gen_algoritmo(nivel, rng):
         regla = 'algoritmo:repetir'
         exp = [f"El cuerpo del ciclo se ejecuta exactamente {n} veces.", f"Valores: {x0} → " + ' → '.join(str(v) for v in _trace(x0, n, k, c)) + "."]
     elif nivel == 'D':
-        x0, lim, k = rng.randint(1, 4), rng.choice([50, 100, 60, 80]), rng.choice([2, 3])
+        x0, lim, k, c0 = rng.randint(1, 6), rng.choice(range(30, 160, 10)), rng.choice([2, 3]), rng.choice([0, 1, 2])
         x, cnt = x0, 0
         while x < lim:
-            x = x * k + 1; cnt += 1
-        code = [f"x ← {x0}", "c ← 0", f"mientras x < {lim}:", f"    x ← x × {k} + 1", "    c ← c + 1", "mostrar c"]
-        ans = cnt; cands = [cnt + 1, cnt - 1, x, cnt + 2, lim // k]
+            x = x * k + c0; cnt += 1
+        if cnt < 2: raise Fallo('corto')
+        upd = f"x ← x × {k}" + (f" + {c0}" if c0 else "")
+        mostrar = rng.choice(['c', 'x'])
+        code = [f"x ← {x0}", "c ← 0", f"mientras x < {lim}:", f"    {upd}", "    c ← c + 1", f"mostrar {mostrar}"]
+        prev = _trace(x0, cnt, k, c0)
+        if mostrar == 'c':
+            ans = cnt; cands = [cnt + 1, cnt - 1, x, cnt + 2]
+        else:
+            ans = x; cands = [prev[-2] if len(prev) > 1 else x0, x * k + c0, lim, x + 1, cnt]
         regla = 'algoritmo:mientras'
-        exp = [f"x toma los valores {x0} → " + ' → '.join(str(v) for v in _trace(x0, cnt, k, 1)) + f"; el ciclo para cuando x ya no es menor que {lim}.",
-               f"El ciclo se ejecutó {cnt} veces, así que c = {cnt}."]
+        exp = [f"x toma los valores {x0} → " + ' → '.join(str(v) for v in prev) + f"; el ciclo para cuando x ya no es menor que {lim}.",
+               f"El ciclo se ejecutó {cnt} veces: c = {cnt} y x = {x}. Se muestra {mostrar} = {ans}."]
     else:
         a0, b0, n = rng.randint(1, 5), rng.randint(1, 5), rng.randint(3, 5)
         a, b = a0, b0
@@ -726,6 +741,16 @@ def _texto(st, T):
 
 NINGUNA = 'Ninguna de estas conclusiones se deduce con certeza.'
 
+def _dibujo(prem, T):
+    partes = []
+    for f, x, y in prem:
+        X, Y = T[x][0], T[y][0]
+        partes.append({'A': f"el círculo de los {X} va DENTRO del de los {Y}",
+                       'E': f"los {X} y los {Y} NO se tocan",
+                       'I': f"los {X} y los {Y} se cruzan (comparten al menos uno)",
+                       'O': f"hay {X} POR FUERA de los {Y}"}[f])
+    return 'Dibuja un círculo por grupo: ' + '; '.join(partes) + '.'
+
 def gen_silogismo(nivel, rng):
     nterm = 4 if nivel == 'MD' else 3
     T = rng.sample(TERMINOS, nterm)
@@ -756,13 +781,13 @@ def gen_silogismo(nivel, rng):
         corr = _texto(validas[0], T)
         rng.shuffle(invalidas)
         ds = [_texto(c, T) for c in invalidas[:3]] + [NINGUNA]
-        exp = [f"De las premisas se deduce: {corr}", "Las otras no se cumplen en todos los casos posibles (dibuja los conjuntos para comprobarlo)."]
+        exp = [_dibujo(prem, T), f"Con ese dibujo, de estas opciones, la que se cumple SIEMPRE es: {corr}", "Las demás opciones fallan en al menos una forma válida de dibujar los grupos."]
         k = None
     else:
         corr = NINGUNA
         rng.shuffle(invalidas)
         ds = [_texto(c, T) for c in invalidas[:4]]
-        exp = ["Ninguna conclusión sobre los dos grupos extremos es segura: hay formas de dibujar los conjuntos que cumplen las premisas y contradicen cada opción."]
+        exp = [_dibujo(prem, T), "Ese dibujo se puede hacer de varias formas, y cada opción falla en alguna de ellas: ninguna conclusión es segura."]
         k = None
     if len(ds) < 4: raise Fallo('pocas')
     o = [corr] + ds
