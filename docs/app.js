@@ -16,6 +16,9 @@ const TIPOS = {
   intrusa:       { n: 'Figura que no pertenece', g: 'fig', w: 1.2, yt: 'psicotécnicos figura diferente explicación' },
   analogia:      { n: 'Analogías de figuras', g: 'fig', w: 1.2, yt: 'psicotécnicos analogías de figuras' },
   cubo:          { n: 'Cubos y desarrollos', g: 'fig', w: 1.5,  yt: 'psicotécnicos desarrollo del cubo caras opuestas' },
+  espejo:        { n: 'Espejos (reflejos)', g: 'fig', w: 1.5,   yt: 'psicotécnicos imagen en el espejo figuras' },
+  giro2d:        { n: 'Girar figuras', g: 'fig', w: 1.5,        yt: 'psicotécnicos rotación de figuras mental' },
+  papel:         { n: 'Papel doblado', g: 'fig', w: 1.2,        yt: 'psicotécnicos papel doblado perforado' },
   serie_num:     { n: 'Series de números', g: 'txt', w: 3,     yt: 'psicotécnicos series numéricas trucos' },
   serie_letras:  { n: 'Series de letras', g: 'txt', w: 2,      yt: 'psicotécnicos series de letras abecedario' },
   numeros_figura:{ n: 'Números en figuras', g: 'txt', w: 2.5,  yt: 'psicotécnicos números en figuras explicación' },
@@ -48,9 +51,12 @@ const METODO = {
   domino: ['Mira la mitad de arriba sola y luego la de abajo sola.', 'Cuenta en ciclo 0-1-2-3-4-5-6-0 (después del 6 viene el 0).', 'Busca pasos constantes o dos series intercaladas.', 'Cuidado con la ficha correcta pero al revés.'],
   intrusa: ['Revisa un rasgo a la vez: color, forma, tamaño y cantidad (par o impar).', 'Busca el rasgo que comparten cuatro figuras y una no.', 'Si la cantidad es la clave, mira si es par o impar.'],
   analogia: ['Mira qué cambia de A a B (forma, color, tamaño, cantidad).', 'Aplica EXACTAMENTE esos cambios a C.', 'Lo que no cambió de A a B se queda igual en C.'],
+  espejo: ['Fíjate dónde está el espejo (a la derecha o abajo).', 'Con el espejo a la derecha, lo de la izquierda pasa a la derecha; arriba y abajo no cambian.', 'Con el espejo abajo, lo de arriba pasa abajo; izquierda y derecha no cambian.', 'Comprueba casilla por casilla, también el color.'],
+  giro2d: ['Elige una casilla especial (una esquina, una de color) y sigue a dónde va al girar.', 'Girar NO es reflejar: si la figura quedó «al revés» como en un espejo, es una trampa.', 'Prueba girar 90°, 180° y 270° en tu mente o con el dedo sobre la pantalla.'],
+  papel: ['Sigue los dobleces en orden y fíjate qué mitad queda encima.', 'Al desdoblar, cada perforación aparece también reflejada al otro lado del doblez.', 'Con dos dobleces se refleja dos veces: cada perforación se convierte en cuatro.', 'Cuenta: el total de agujeros debe ser perforaciones × 2 por cada doblez.'],
   cubo: ['Dos caras separadas por una sola cara en línea recta quedan opuestas.', 'Las caras opuestas nunca se ven al mismo tiempo ni se tocan.', 'En una esquina se ven tres caras vecinas: ninguna puede ser opuesta a otra.', 'Si dudas, imagina que doblas el papel cara por cara desde la del centro.'],
   serie_num: ['Calcula las diferencias entre números seguidos.', 'Si las diferencias no son iguales, calcula las diferencias de las diferencias.', 'Prueba multiplicar o dividir (×2, ×3).', 'Prueba dos series intercaladas (posiciones impares y pares).', 'Prueba sumar los dos anteriores o alternar dos operaciones.'],
-  serie_letras: ['Escribe el alfabeto numerado CON la Ñ: A1 … N14, Ñ15, O16 … Z27.', 'Convierte las letras en números y trabaja como en una serie numérica.', 'Después de la Z vuelve la A.'],
+  serie_letras: ['Lee si el enunciado dice CON Ñ (27 letras) o SIN Ñ (26). En el examen real, revisa las instrucciones.', 'Escribe el alfabeto numerado: con Ñ es A1 … N14, Ñ15, O16 … Z27; sin Ñ es A1 … N14, O15 … Z26.', 'Convierte las letras en números y trabaja como en una serie numérica.', 'Después de la Z vuelve la A.'],
   numeros_figura: ['Prueba la regla en la primera fila (o figura): suma, resta, producto, doble, cuadrado…', 'Comprueba que funcione igual en la segunda.', 'Aplícala a la última.'],
   simbolos: ['Empieza por la igualdad que tenga un solo símbolo desconocido.', 'Reemplaza ese valor en las demás.', 'En balanzas, pasa todo a la misma unidad paso a paso.'],
   operador: ['Copia la definición y reemplaza a y b por los números, en ese orden.', 'Resuelve primero lo que está entre paréntesis.', 'Si te piden x, prueba valores pequeños hasta que dé.'],
@@ -134,7 +140,7 @@ async function buildSession(mode, opts = {}) {
     const due = S.rev.filter(r => !r.done && r.due <= today).sort((a, b) => a.due.localeCompare(b.due)).slice(0, 20);
     plan = due.map(r => ({ t: r.t, nivel: lvlOf(r.t), regla: r.r, revId: r.id }));
   } else {
-    const N = mode === 'simulacro' ? 50 : S.daily;
+    const N = mode === 'simulacro' ? (opts.corto ? 25 : 50) : S.daily;
     if (mode === 'practica') {
       const due = S.rev.filter(r => !r.done && r.due <= today).sort((a, b) => a.due.localeCompare(b.due));
       const seenKey = new Set();
@@ -147,7 +153,7 @@ async function buildSession(mode, opts = {}) {
     const count = {};
     plan.forEach(p => count[p.t] = (count[p.t] || 0) + 1);
     const maxPer = Math.ceil(N / 7);
-    const nFig = mode === 'simulacro' ? 20 : null;
+    const nFig = mode === 'simulacro' ? Math.round(N * 0.4) : null;
     let figs = plan.filter(p => TIPOS[p.t].g === 'fig').length;
     while (plan.length < N) {
       const w = {};
@@ -180,7 +186,7 @@ async function buildSession(mode, opts = {}) {
   items = interleave(items);
   return {
     id: Date.now(), mode, items, i: 0, t0: Date.now(), elapsed: 0,
-    limit: mode === 'simulacro' ? 120 * 60 : null, tipo: opts.tipo || null,
+    limit: mode === 'simulacro' ? (opts.corto ? 60 : 120) * 60 : null, tipo: opts.tipo || null,
   };
 }
 function interleave(items) {
@@ -250,6 +256,14 @@ function svg(w, h, body, label = '') { return `<svg viewBox="0 0 ${w} ${h}" widt
 
 function stemFig(t, it) {
   const s = it.s;
+  if (t === 'espejo') {
+    const x = it.x, v = x.eje === 'v';
+    const mirror = v ? `<rect x="104" y="0" width="7" height="100" rx="2" fill="#9fc6e6"/><text x="128" y="54" font-size="12" font-weight="700" fill="#5a8fb8">espejo</text>`
+      : `<rect x="0" y="104" width="100" height="7" rx="2" fill="#9fc6e6"/><text x="50" y="128" text-anchor="middle" font-size="12" font-weight="700" fill="#5a8fb8">espejo</text>`;
+    return svg(v ? 170 : 100, v ? 100 : 134, gridSvg(x.fig, x.N) + mirror, 'figura y espejo');
+  }
+  if (t === 'giro2d') return svg(100, 100, gridSvg(it.x.fig, it.x.N), 'figura');
+  if (t === 'papel') return papelSvg(it.x.steps, it.x.N);
   if (t === 'matriz' || t === 'superposicion') {
     const g = t === 'matriz' ? s : s.g, n = t === 'superposicion' ? s.n : 3;
     let b = '';
@@ -279,7 +293,38 @@ function stemFig(t, it) {
   }
   return '';
 }
+function gridSvg(cells, N, holes = false, extra = '') {
+  const L = 100 / N; let b = frame(0, 0);
+  for (let k = 1; k < N; k++) b += `<line x1="${k * L}" x2="${k * L}" y1="3" y2="97" stroke="#e3e3e3" stroke-width="1"/><line y1="${k * L}" y2="${k * L}" x1="3" x2="97" stroke="#e3e3e3" stroke-width="1"/>`;
+  cells.forEach(([r, c, k]) => {
+    b += holes ? `<circle cx="${c * L + L / 2}" cy="${r * L + L / 2}" r="${L * 0.28}" fill="#111"/>`
+      : `<rect x="${c * L + 2}" y="${r * L + 2}" width="${L - 4}" height="${L - 4}" rx="2" fill="${k === 2 ? '#8a8a8a' : '#111'}"/>`;
+  });
+  return b + extra;
+}
+function papelSvg(st, N) {
+  const L = 100 / N, W = 112; let b = '';
+  st.forEach((p, i) => {
+    const x0 = i * W;
+    b += `<rect x="${x0 + 1}" y="1" width="98" height="98" fill="none" stroke="#bbb" stroke-dasharray="3 3"/>`;
+    b += `<rect x="${x0 + p.c0 * L + 1}" y="${p.r0 * L + 1}" width="${p.w * L - 2}" height="${p.h * L - 2}" fill="#fff" stroke="#111" stroke-width="1.6"/>`;
+    p.holes.forEach(([r, c]) => { b += `<circle cx="${x0 + c * L + L / 2}" cy="${r * L + L / 2}" r="${L * 0.28}" fill="#111"/>`; });
+    if (p.fold === 'v') {
+      const fx = x0 + (p.c0 + p.w / 2) * L, my = (p.r0 + p.h / 2) * L;
+      b += `<line x1="${fx}" x2="${fx}" y1="${p.r0 * L + 2}" y2="${(p.r0 + p.h) * L - 2}" stroke="#4338ca" stroke-width="2" stroke-dasharray="5 4"/>`;
+      b += `<path d="M${fx - p.w * L / 4} ${my} Q ${fx} ${my - 18} ${fx + p.w * L / 4} ${my}" fill="none" stroke="#4338ca" stroke-width="2.4"/><path d="M${fx + p.w * L / 4 - 7} ${my - 6} L${fx + p.w * L / 4} ${my} L${fx + p.w * L / 4 - 8} ${my + 3}" fill="none" stroke="#4338ca" stroke-width="2.4"/>`;
+    } else if (p.fold === 'h') {
+      const fy = (p.r0 + p.h / 2) * L, mx = x0 + (p.c0 + p.w / 2) * L;
+      b += `<line y1="${fy}" y2="${fy}" x1="${x0 + p.c0 * L + 2}" x2="${x0 + (p.c0 + p.w) * L - 2}" stroke="#4338ca" stroke-width="2" stroke-dasharray="5 4"/>`;
+      b += `<path d="M${mx} ${fy - p.h * L / 4} Q ${mx + 18} ${fy} ${mx} ${fy + p.h * L / 4}" fill="none" stroke="#4338ca" stroke-width="2.4"/><path d="M${mx - 6} ${fy + p.h * L / 4 - 7} L${mx} ${fy + p.h * L / 4} L${mx + 3} ${fy + p.h * L / 4 - 8}" fill="none" stroke="#4338ca" stroke-width="2.4"/>`;
+    }
+    b += `<text x="${x0 + 50}" y="116" text-anchor="middle" font-size="11" font-weight="700" fill="#999">${i < st.length - 1 ? 'Paso ' + (i + 1) : 'Perforado'}</text>`;
+  });
+  return svg(st.length * W - 12, 120, b, 'papel doblado');
+}
 function optFig(t, c, n) {
+  if (t === 'espejo' || t === 'giro2d') return svg(100, 100, gridSvg(c, n));
+  if (t === 'papel') return svg(100, 100, gridSvg(c, n, true));
   if (t === 'domino') return svg(50, 100, tile(c, 0, 0));
   return svg(100, 100, cell(t, c, 0, 0, n));
 }
@@ -387,9 +432,15 @@ function renderHome() {
     <div class="grid2">
       <button class="card action main" id="practica"><span class="ico">${ICON.play}</span><div><b>Práctica de hoy</b><span>${S.daily} preguntas mezcladas, adaptadas a tu nivel · ~${Math.round(S.daily * 2.4)} min</span></div></button>
       <button class="card action" id="repaso"><span class="ico">${ICON.redo}</span><b>Repasar errores${due ? `<span class="badge">${due}</span>` : ''}</b><span>${due ? 'Preguntas nuevas sobre lo que fallaste' : 'No tienes repasos pendientes hoy'}</span></button>
-      <button class="card action" id="simulacro"><span class="ico">${ICON.clock}</span><b>Simulacro</b><span>50 preguntas · 2 horas · como el examen</span></button>
+      <button class="card action" id="simulacro"><span class="ico">${ICON.clock}</span><b>Simulacro</b><span>Completo (50 · 2 h) o corto (25 · 1 h), como el examen</span></button>
     </div>
     ${!anclaA ? `<div class="card" style="margin-top:12px"><b>${ICON.flag} Prueba ancla A (una sola vez)</b><p class="muted small" style="margin:6px 0 10px">Mide tu punto de partida con preguntas hechas por personas: descarga el <a href="${ANCLA_URL}" target="_blank" rel="noopener">PDF de 50 preguntas de RedOpositor</a>, haz solo las preguntas 1 a 25 en 60 minutos y anota aquí cuántas acertaste. Las 26 a 50 guárdalas para la prueba B, unos días antes del examen.</p><button class="chip" id="ancla">Anotar mi puntaje</button></div>` : ''}
+    <div class="card" style="margin-top:12px"><b>👥 Practica también con preguntas hechas por personas</b>
+      <p class="muted small" style="margin:6px 0 10px">Así compruebas que lo que aprendes aquí sirve fuera de esta app. Hazlas con cronómetro y anota tu puntaje.</p>
+      <div class="row-actions" style="margin:0">
+        <a class="chip" href="https://www.preparaoposiciones.com/blog/test-gratis/psicotecnicos/" target="_blank" rel="noopener">PreparaOposiciones (español)</a>
+        <a class="chip" href="https://www.practiceaptitudetests.com/abstract-reasoning-tests/" target="_blank" rel="noopener">Practice Aptitude Tests (inglés)</a>
+        <button class="chip" id="ext">✍ Anotar un test externo</button></div></div>
     <h2 class="section">Practicar un tipo</h2>
     <div class="types">${types}</div>
     <div class="row-actions" style="margin-top:18px"><button class="chip" id="proto2">📋 Protocolo del día del examen</button></div>
@@ -404,13 +455,15 @@ function renderHome() {
   document.getElementById('practica').onclick = () => start('practica');
   document.getElementById('repaso').onclick = () => start('repaso');
   document.getElementById('simulacro').onclick = () => {
-    openModal(`<h3>Simulacro de 50 preguntas</h3><p class="muted">Dura 2 horas, como el examen. Busca un lugar tranquilo, sin celular a la mano. Las explicaciones salen al final.</p><p class="muted small">Ritmo sugerido: pregunta 10 al minuto 24, la 25 al minuto 60 y la 40 al minuto 96. Si una te traba más de 3 minutos, sáltala y vuelve.</p><div class="row-actions"><button class="btn primary" id="go-sim">Empezar ahora</button></div>`);
+    openModal(`<h3>Simulacro</h3><p class="muted">Como el examen: con reloj, sin pistas y con las explicaciones al final. Busca un lugar tranquilo, sin celular a la mano.</p><p class="muted small">Ritmo: ~2,4 min por pregunta. Si una te traba más de 3 minutos, sáltala y vuelve.</p><div class="row-actions"><button class="btn primary" id="go-sim">Completo · 50 preguntas · 2 h</button><button class="btn" id="go-sim-c">Corto · 25 preguntas · 1 h</button></div>`);
     $modal.querySelector('[data-close]').textContent = 'Cancelar';
     document.getElementById('go-sim').onclick = () => { closeModal(); start('simulacro'); };
+    document.getElementById('go-sim-c').onclick = () => { closeModal(); start('simulacro', { corto: true }); };
   };
   const r = document.getElementById('resume'); if (r) r.onclick = () => go('quiz');
   const an = document.getElementById('ancla'); if (an) an.onclick = () => anclaDialog('A');
   const pr = document.getElementById('proto'); if (pr) pr.onclick = showProtocolo;
+  const ex = document.getElementById('ext'); if (ex) ex.onclick = extDialog;
   const pr2 = document.getElementById('proto2'); if (pr2) pr2.onclick = showProtocolo;
   $app.querySelectorAll('[data-tipo]').forEach(b => b.onclick = () => start('tipo', { tipo: b.dataset.tipo }));
 }
@@ -433,6 +486,14 @@ function showProtocolo() {
     <li>Si no restan las malas, no dejes ninguna en blanco.</li>
     <li>Si te bloqueas, respira lento unos segundos y pasa a la siguiente.</li></ol></div>`);
 }
+function extDialog() {
+  openModal(`<h3>Test externo</h3><label class="field">¿Dónde lo hiciste?<input type="text" id="ex-n" placeholder="ej. PreparaOposiciones, matrices"></label><div class="grid2" style="margin-top:0"><label class="field">Acertadas<input type="number" id="ex-ok" min="0" inputmode="numeric"></label><label class="field">De cuántas<input type="number" id="ex-t" min="1" inputmode="numeric"></label></div>`);
+  $modal.querySelector('[data-close]').textContent = 'Guardar';
+  $modal.querySelector('[data-close]').addEventListener('click', () => {
+    const ok = parseInt(document.getElementById('ex-ok').value, 10), t = parseInt(document.getElementById('ex-t').value, 10);
+    if (t > 0 && ok >= 0 && ok <= t) { S.ext = S.ext || []; S.ext.push({ date: hoy(), n: document.getElementById('ex-n').value.trim(), ok, t }); save(); }
+  }, { once: true });
+}
 function anclaDialog(k) {
   openModal(`<h3>Prueba ancla ${k}</h3><label class="field">¿Cuántas acertaste de 25?<input type="number" id="anc-v" min="0" max="25" inputmode="numeric"></label>`);
   const inp = document.getElementById('anc-v'); inp.focus();
@@ -451,7 +512,7 @@ function anclaDialog(k) {
 const LOGICA = ['silogismo', 'condicional', 'ordenamiento', 'verdad_mentira', 'tabla_logica'];
 function qParts(q) {
   const it = q.it;
-  if (TIPOS[q.t].g === 'fig' && q.t !== 'cubo') return [PREG_FIG[q.t], ''];
+  if (TIPOS[q.t].g === 'fig' && q.t !== 'cubo') return [it.q || PREG_FIG[q.t], ''];
   if (LOGICA.includes(q.t) && it.x && it.x.lines) {
     const set = new Set(it.x.lines);
     const rest = it.q.split('\n').filter(l => !set.has(l) && l !== 'Premisas:' && !l.startsWith('Se sabe que:'));
@@ -480,7 +541,7 @@ function stemHtml(q) {
 }
 function optHtml(q, orig) {
   const t = q.t, it = q.it;
-  if (TIPOS[t].g === 'fig' && t !== 'cubo') return optFig(t, it.o[orig], t === 'superposicion' ? it.s.n : 3);
+  if (TIPOS[t].g === 'fig' && t !== 'cubo') return optFig(t, it.o[orig], t === 'superposicion' ? it.s.n : (it.x && it.x.N) || 3);
   return `<span${t === 'cubo' ? ' class="big"' : ''}>${esc(it.o[orig])}</span>`;
 }
 function isFigOpts(q) { return TIPOS[q.t].g === 'fig' && q.t !== 'cubo'; }
@@ -522,6 +583,7 @@ function renderQuiz() {
     <div class="qmeta"><span>${sim ? `Pregunta ${CUR.i + 1}` : `${TIPOS[q.t].n} · ${NIV_TXT[NIV.indexOf(q.it.n)]}`}</span>${sim ? '' : `<button class="link-btn" id="how">¿Cómo se resuelve?</button>`}</div>
     <div id="pace" class="pace"></div>
     ${qBlock(q)}
+    ${!sim && !fb && lvlOf(q.t) <= 1 && q.it.e.length >= 2 ? (q.hint ? `<div class="why small"><p><b>💡 Primer paso:</b> ${esc(q.it.e[0])}</p><p class="muted">Ahora termina tú.</p></div>` : `<button class="link-btn" id="hint" style="margin:-4px 0 10px">💡 Ver el primer paso</button>`) : ''}
     ${!sim && !fb && S.thinkFirst !== false && !q.revealed && q.t !== 'intrusa' ? `<div class="think"><p><b>Primero piensa tu respuesta</b> sin mirar las opciones: ¿qué regla ves y cómo debería ser lo que falta?</p><button class="btn primary" id="reveal">Ya la pensé · ver opciones</button></div>` : `<div class="options${fig ? ' fig' : ''}">${opts}</div>
     ${!sim && !fb ? `<div class="checkrow"><span class="muted small">Comprobar:</span><button class="btn" id="dudo" ${q.ans === null ? 'disabled' : ''}>Tengo dudas</button><button class="btn primary" id="next" ${q.ans === null ? 'disabled' : ''}>Estoy seguro</button></div>` : ''}`}
     ${fb ? `<div id="fb">${feedbackHtml(q)}${q.ok ? '' : causeHtml(q)}<div class="row-actions"><a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos de este tipo</a></div></div>` : ''}
@@ -533,6 +595,7 @@ function renderQuiz() {
   if (!fb) $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { q.ans = +b.dataset.pos; saveCur(); $app.querySelectorAll('.opt').forEach(o => o.classList.toggle('sel', +o.dataset.pos === q.ans)); const nb = document.getElementById('next'); if (nb) nb.disabled = false; const du = document.getElementById('dudo'); if (du) du.disabled = false; const sk = document.getElementById('skip'); if (sk) sk.textContent = 'Después'; });
   const nx = document.getElementById('next'); if (nx) nx.onclick = () => { if (!sim && !q.checked) q.conf = 'seguro'; next(); };
   const du = document.getElementById('dudo'); if (du) du.onclick = () => { q.conf = 'dudo'; next(); };
+  const hb = document.getElementById('hint'); if (hb) hb.onclick = () => { q.hint = true; saveCur(); renderQuiz(); };
   const rv = document.getElementById('reveal'); if (rv) rv.onclick = () => { q.revealed = true; saveCur(); renderQuiz(); };
   $app.querySelectorAll('[data-cause]').forEach(b => b.onclick = () => { q.cause = b.dataset.cause; saveCur(); $app.querySelectorAll('[data-cause]').forEach(o => o.classList.toggle('on', o.dataset.cause === q.cause)); });
   const sk = document.getElementById('skip'); if (sk) sk.onclick = () => advance(true);
@@ -633,7 +696,8 @@ function finish() {
     // el simulacro mide, no ajusta: no cambia tu nivel ni tus porcentajes por tipo
     if (CUR.mode !== 'simulacro') {
       const h = histOf(q.t);
-      h.n++; h.tot++; if (ok) { h.c++; h.ok++; }
+      // con pista cuenta como intento, pero no como acierto para subir de nivel
+      h.n++; h.tot++; if (ok) { h.ok++; if (!q.hint) h.c++; }
       h.all.push(ok ? 1 : 0); if (h.all.length > 30) h.all.shift();
       if (h.n >= 8) {
         const acc = h.c / h.n, L = lvlOf(q.t);
@@ -644,7 +708,7 @@ function finish() {
     }
     if (q.revId) { const r = S.rev.find(x => x.id === q.revId); if (r) r.done = true; }
     // acertar dudando también merece un repaso (a 3 días), si esa regla no tiene uno pendiente
-    if (ok && q.conf === 'dudo' && !S.rev.some(r => !r.done && r.t === q.t && r.r === q.it.r)) {
+    if (ok && (q.conf === 'dudo' || q.hint) && !S.rev.some(r => !r.done && r.t === q.t && r.r === q.it.r)) {
       S.rev.push({ id: `${CUR.id}-${idx}-dudo`, src: `${CUR.id}-${idx}`, t: q.t, r: q.it.r, due: addDays(today, 3), done: false });
     }
     if (!ok) {
@@ -778,7 +842,7 @@ function renderProgress() {
     <div class="grid2">
       <div class="card"><span class="muted small">Preguntas respondidas</span><h2 style="margin:4px 0 0">${tot}</h2></div>
       <div class="card"><span class="muted small">Acierto total</span><h2 style="margin:4px 0 0">${tot ? Math.round(okT / tot * 100) + '%' : '—'}</h2></div>
-      <div class="card"><span class="muted small">Último simulacro</span><h2 style="margin:4px 0 0">${sims.length ? `${sims[sims.length - 1].correct}/50` : '—'}</h2></div>
+      <div class="card"><span class="muted small">Último simulacro</span><h2 style="margin:4px 0 0">${sims.length ? `${sims[sims.length - 1].correct}/${sims[sims.length - 1].total}` : '—'}</h2></div>
       <div class="card"><span class="muted small">Pruebas ancla</span><h2 style="margin:4px 0 0">${S.anchors.length ? S.anchors.map(a => `${a.k}: ${a.v}/25`).join(' · ') : '—'}</h2></div>
     </div>
     ${(() => {
@@ -790,6 +854,7 @@ function renderProgress() {
         ${sg[1] ? `<div class="kv"><span>Acierto cuando estabas seguro</span><span class="muted">${Math.round(sg[0] / sg[1] * 100)}% (${sg[1]})</span></div>` : ''}${du[1] ? `<div class="kv"><span>Acierto cuando dudabas</span><span class="muted">${Math.round(du[0] / du[1] * 100)}% (${du[1]})</span></div>` : ''}
         <p class="muted small" style="margin:8px 0 0">${(c.descuido || 0) / (tc || 1) >= 0.3 ? 'Muchos errores son por leer rápido: usa siempre la rutina de 10 segundos antes de marcar.' : (c.regla || 0) / (tc || 1) >= 0.4 ? 'La mayoría de errores son por no conocer la regla: abre «¿Cómo se resuelve?» y mira el ejemplo resuelto antes de practicar ese tipo.' : 'Sigue marcando por qué fallas: así la app y tú saben qué reforzar.'}</p></div>`;
     })()}
+    ${(S.ext || []).length ? `<h2 class="section">Tests externos (hechos por personas)</h2><div class="card">${S.ext.slice(-8).reverse().map(e => `<div class="kv"><span>${esc(e.date)} · ${esc(e.n || 'Test')}</span><span class="muted">${e.ok}/${e.t} · ${Math.round(e.ok / e.t * 100)}%</span></div>`).join('')}</div>` : ''}
     <h2 class="section">Por tipo (de más débil a más fuerte)</h2>
     <div class="card">${rows}</div>
     <div class="row-actions" style="margin-top:14px">${!S.anchors.find(a => a.k === 'A') ? '<button class="chip" data-anc="A">Anotar prueba ancla A</button>' : ''}<button class="chip" data-anc="B">Anotar prueba ancla B</button></div>`;

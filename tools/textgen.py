@@ -211,19 +211,26 @@ def gen_serie_num(nivel, rng):
 def L_(i):
     return ALFA[i % 27]
 
-def _lseq_explicable(idx):
-    d = [(b - a) % 27 for a, b in zip(idx, idx[1:])]
+def _lseq_explicable(idx, m=27):
+    d = [(b - a) % m for a, b in zip(idx, idx[1:])]
     if len(set(d)) == 1: return True
-    if len(d) >= 3 and len({(b - a) % 27 for a, b in zip(d, d[1:])}) == 1: return True
+    if len(d) >= 3 and len({(b - a) % m for a, b in zip(d, d[1:])}) == 1: return True
     if len(idx) >= 6:
-        d1 = {(b - a) % 27 for a, b in zip(idx[0::2], idx[2::2])}
-        d2 = {(b - a) % 27 for a, b in zip(idx[1::2], idx[3::2])}
+        d1 = {(b - a) % m for a, b in zip(idx[0::2], idx[2::2])}
+        d2 = {(b - a) % m for a, b in zip(idx[1::2], idx[3::2])}
         if len(d1) == 1 and len(d2) == 1: return True
     if len(d) >= 4 and all(d[i] == d[i - 2] for i in range(2, len(d))): return True
     return False
 
 
 def gen_serie_letras(nivel, rng):
+    # Unos exámenes cuentan la Ñ y otros no: se practica con los dos y el enunciado lo dice siempre.
+    con_n = rng.random() < 0.5
+    A = ALFA if con_n else "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    m = len(A)
+    Lx = lambda i: A[i % m]
+    nota = ' (alfabeto CON Ñ, 27 letras)' if con_n else ' (alfabeto SIN Ñ, 26 letras)'
+
     if nivel == 'F':
         kind = 'paso'
     elif nivel == 'M':
@@ -232,28 +239,28 @@ def gen_serie_letras(nivel, rng):
         kind = rng.choice(['inter', 'creciente', 'pares'])
     else:
         kind = rng.choice(['inter_dist', 'pares_mix'])
-    s = rng.randrange(27)
+    s = rng.randrange(m)
     if kind == 'paso':
         k = rng.choice([2, 3, 4, 5, -2, -3])
         idx = [s + k * i for i in range(7)]
-        exp = f"Se {'avanza' if k > 0 else 'retrocede'} {abs(k)} letras cada vez (cuenta la Ñ)."; regla = 'letras:paso constante'
+        exp = f"Se {'avanza' if k > 0 else 'retrocede'} {abs(k)} letras cada vez."; regla = 'letras:paso constante'
     elif kind == 'atras':
         k = rng.choice([2, 3])
         idx = [s - k * i for i in range(7)]
-        exp = f"Se retrocede {k} letras cada vez (cuenta la Ñ)."; regla = 'letras:paso constante'
+        exp = f"Se retrocede {k} letras cada vez."; regla = 'letras:paso constante'
     elif kind == 'alterna':
         p, q = rng.choice([(1, 2), (2, 1), (1, 3), (3, 1), (2, 3)])
         idx = [s]
         for i in range(6): idx.append(idx[-1] + (p if i % 2 == 0 else q))
-        exp = f"Se alterna: avanza {p}, avanza {q}, avanza {p}… (cuenta la Ñ)."; regla = 'letras:pasos alternos'
+        exp = f"Se alterna: avanza {p}, avanza {q}, avanza {p}…."; regla = 'letras:pasos alternos'
     elif kind == 'creciente':
         idx = [s]
         for i in range(6): idx.append(idx[-1] + i + 1)
-        exp = "Se avanza 1, luego 2, luego 3… letras (cuenta la Ñ)."; regla = 'letras:paso creciente'
+        exp = "Se avanza 1, luego 2, luego 3… letras."; regla = 'letras:paso creciente'
     elif kind in ('inter', 'inter_dist'):
         k1 = rng.choice([1, 2, 3]); k2 = -rng.choice([1, 2]) if kind == 'inter_dist' else rng.choice([1, 2, 3])
         if k1 == k2: raise Fallo('inter')
-        b = rng.randrange(27)
+        b = rng.randrange(m)
         a1 = [s + k1 * i for i in range(4)]; a2 = [b + k2 * i for i in range(3)]
         idx = [a1[0], a2[0], a1[1], a2[1], a1[2], a2[2], a1[3]]
         exp = f"Dos series intercaladas: posiciones impares avanzan {k1}; posiciones pares {'avanzan' if k2>0 else 'retroceden'} {abs(k2)}."
@@ -263,26 +270,26 @@ def gen_serie_letras(nivel, rng):
         k = rng.choice([3, 4]) if kind == 'pares' else rng.choice([3, 5])
         gap = 1 if kind == 'pares' else rng.choice([2])
         prs = [(s + k * i, s + k * i + gap) for i in range(5)]
-        shown = [L_(a) + L_(b) for a, b in prs[:4]]
-        ans = L_(prs[4][0]) + L_(prs[4][1])
-        cands = [L_(prs[4][0] + 1) + L_(prs[4][1] + 1), L_(prs[4][0] - 1) + L_(prs[4][1] - 1),
-                 L_(prs[4][0]) + L_(prs[4][1] + 1), L_(prs[4][1]) + L_(prs[4][0]),
-                 L_(prs[4][0] + 1) + L_(prs[4][1]), L_(prs[4][0] - 2) + L_(prs[4][1] - 2)]
+        shown = [Lx(a) + Lx(b) for a, b in prs[:4]]
+        ans = Lx(prs[4][0]) + Lx(prs[4][1])
+        cands = [Lx(prs[4][0] + 1) + Lx(prs[4][1] + 1), Lx(prs[4][0] - 1) + Lx(prs[4][1] - 1),
+                 Lx(prs[4][0]) + Lx(prs[4][1] + 1), Lx(prs[4][1]) + Lx(prs[4][0]),
+                 Lx(prs[4][0] + 1) + Lx(prs[4][1]), Lx(prs[4][0] - 2) + Lx(prs[4][1] - 2)]
         o = opciones(ans, cands, rng)
-        exp = f"Cada par empieza {k} letras después del anterior y sus dos letras están separadas por {gap} (cuenta la Ñ)."
-        return item('serie_letras', nivel, 'letras:pares', '¿Qué par de letras sigue?', o, [exp],
+        exp = f"Cada par empieza {k} letras después del anterior y sus dos letras están separadas por {gap}."
+        return item('serie_letras', nivel, 'letras:pares', '¿Qué par de letras sigue?' + nota, o, [exp],
                     x={'seq': shown + ['?']})
     shown_i, ans_i = idx[:-1], idx[-1]
-    ans = L_(ans_i)
-    cands = [L_(ans_i + d) for d in (1, -1, 2, -2, 3)]
+    ans = Lx(ans_i)
+    cands = [Lx(ans_i + d) for d in (1, -1, 2, -2, 3)]
     # la trampa clásica: olvidar la Ñ
     sin_n = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    cands = [c for c in cands if not _lseq_explicable(shown_i + [ALFA.index(c)])]
+    cands = [c for c in cands if not _lseq_explicable(shown_i + [A.index(c)], m)]
     rng.shuffle(cands)
-    o = opciones(ans, cands, rng, [L_(ans_i + d) for d in range(-6, 7) if d and not _lseq_explicable(shown_i + [ans_i + d])])
-    return item('serie_letras', nivel, regla, '¿Qué letra sigue?', o,
-                [exp, 'Tip: escribe el alfabeto numerado con la Ñ (A1 … N14, Ñ15, O16 … Z27).'],
-                x={'seq': [L_(i) for i in shown_i] + ['?']})
+    o = opciones(ans, cands, rng, [Lx(ans_i + d) for d in range(-6, 7) if d and not _lseq_explicable(shown_i + [ans_i + d], m)])
+    return item('serie_letras', nivel, regla, '¿Qué letra sigue?' + nota, o,
+                [exp, ('Tip: escribe el alfabeto numerado con la Ñ (A1 … N14, Ñ15, O16 … Z27).' if con_n else 'Tip: escribe el alfabeto numerado sin la Ñ (A1 … N14, O15 … Z26).')],
+                x={'seq': [Lx(i) for i in shown_i] + ['?']})
 
 
 # ---------------------------------------------------------------- números dentro de figuras

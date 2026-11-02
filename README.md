@@ -5,7 +5,7 @@
 Página web de práctica para exámenes de razonamiento lógico y abstracto (psicotécnicos). Funciona en el celular y en el computador, sin cuenta y sin conexión a ningún servicio: el progreso se guarda en el propio navegador.
 
 ## Qué hace
-- **22 tipos de pregunta**: matrices, series de figuras, giros, superposición, dominós, figura que no pertenece, analogías de figuras, cubos y desarrollos, series de números y de letras, números en figuras, ecuaciones con símbolos, operadores inventados, seguir un procedimiento (pseudocódigo), silogismos, condicionales, ordenamiento, verdades y mentiras, tablas lógicas, codificación, problemas numéricos y analogías verbales.
+- **25 tipos de pregunta**: matrices, espejos, girar figuras, papel doblado,, series de figuras, giros, superposición, dominós, figura que no pertenece, analogías de figuras, cubos y desarrollos, series de números y de letras, números en figuras, ecuaciones con símbolos, operadores inventados, seguir un procedimiento (pseudocódigo), silogismos, condicionales, ordenamiento, verdades y mentiras, tablas lógicas, codificación, problemas numéricos y analogías verbales.
 - **Se adapta**: cada tipo tiene su nivel (1–4); sube con más de 85 % de acierto y baja con menos de 70 %.
 - **Repaso espaciado**: cada error vuelve con una pregunta nueva de la misma regla a 1, 3 y 7 días.
 - **Explicación de cada error**, la trampa más tentadora y enlace a videos.
