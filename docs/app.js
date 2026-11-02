@@ -84,7 +84,103 @@ function nuevoEstado() {
   return { v: 1, start: hoy(), exam: '2026-11-27', daily: 25, lvl: {}, hist: {}, seen: {}, rev: [], sessions: [], anchors: [], theme: 'auto' };
 }
 let S = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || nuevoEstado(); } catch (e) { return nuevoEstado(); } })();
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function save(fromSync) {
+  if (!fromSync) S.updated = Date.now();
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+  if (!fromSync) schedulePush();
+}
+
+// ------------------------------------------------------------------ sincronización (Firebase: inicio de sesión + Firestore)
+const FIREBASE_CONFIG = null; // se completa con los datos del proyecto de Firebase
+let FB = null, USER = null, PUSH_T = null, LAST_SYNC = null, SYNC_ERR = '';
+function initSync() {
+  if (!FIREBASE_CONFIG || typeof firebase === 'undefined') return;
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    FB = { auth: firebase.auth(), db: firebase.firestore() };
+    FB.auth.getRedirectResult().catch(e => { SYNC_ERR = authMsg(e); });
+    FB.auth.onAuthStateChanged(u => { USER = u; if (u) pull(); else if (VIEW !== 'quiz') render(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && USER) pull(); });
+  } catch (e) { SYNC_ERR = e.message; }
+}
+function userDoc() { return FB.db.collection('users').doc(USER.uid); }
+function schedulePush() { if (!USER) return; clearTimeout(PUSH_T); PUSH_T = setTimeout(push, 2000); }
+async function push() {
+  if (!USER) return;
+  try { await userDoc().set({ state: JSON.stringify(S), updated: S.updated || Date.now() }); LAST_SYNC = new Date(); SYNC_ERR = ''; }
+  catch (e) { SYNC_ERR = 'No se pudo guardar en la nube: ' + e.message; }
+}
+function mergeState(a, b) {
+  const nuevo = (a.updated || 0) >= (b.updated || 0) ? a : b, viejo = nuevo === a ? b : a;
+  const out = JSON.parse(JSON.stringify(nuevo));
+  const byId = (x, y, k) => { const m = new Map(); [...(y || []), ...(x || [])].forEach(it => { const id = k(it); const prev = m.get(id); m.set(id, prev && prev.done ? { ...it, done: true } : it); }); return [...m.values()]; };
+  out.sessions = byId(nuevo.sessions, viejo.sessions, x => x.id).sort((p, q) => p.id - q.id);
+  out.rev = byId(nuevo.rev, viejo.rev, x => x.id);
+  out.seen = { ...(viejo.seen || {}), ...(nuevo.seen || {}) };
+  out.intro = { ...(viejo.intro || {}), ...(nuevo.intro || {}) };
+  out.desc = { ...(viejo.desc || {}), ...(nuevo.desc || {}) };
+  out.anchors = byId(nuevo.anchors, viejo.anchors, x => x.k);
+  out.ext = byId(nuevo.ext, viejo.ext, x => [x.date, x.n, x.ok, x.t].join('|'));
+  out.updated = Math.max(a.updated || 0, b.updated || 0);
+  return out;
+}
+async function pull() {
+  if (!USER) return;
+  try {
+    const d = await userDoc().get();
+    if (d.exists) { const remote = JSON.parse(d.data().state); S = mergeState(S, remote); save(true); applyTheme(); }
+    await push();
+  } catch (e) { SYNC_ERR = 'No se pudo leer de la nube: ' + e.message; }
+  if (VIEW !== 'quiz') render();
+}
+function authMsg(e) {
+  const c = (e && e.code) || '';
+  if (c.includes('wrong-password') || c.includes('invalid-credential')) return 'Correo o contraseña incorrectos.';
+  if (c.includes('user-not-found')) return 'No existe una cuenta con ese correo. Toca «Crear cuenta».';
+  if (c.includes('email-already-in-use')) return 'Ya existe una cuenta con ese correo. Toca «Entrar».';
+  if (c.includes('weak-password')) return 'La contraseña debe tener al menos 6 caracteres.';
+  if (c.includes('invalid-email')) return 'Ese correo no es válido.';
+  if (c.includes('network')) return 'Sin conexión a internet.';
+  if (c.includes('unauthorized-domain')) return 'Falta autorizar el dominio en Firebase (Authentication → Settings → Authorized domains).';
+  return (e && e.message) || 'No se pudo iniciar sesión.';
+}
+async function loginGoogle() {
+  const prov = new firebase.auth.GoogleAuthProvider();
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  try {
+    if (ios && isStandalone()) await FB.auth.signInWithRedirect(prov);
+    else await FB.auth.signInWithPopup(prov);
+  } catch (e) {
+    if (/popup/.test(e.code || '')) { try { await FB.auth.signInWithRedirect(prov); return; } catch (e2) { SYNC_ERR = authMsg(e2); } }
+    else SYNC_ERR = authMsg(e);
+    render();
+  }
+}
+async function loginEmail(crear) {
+  const em = document.getElementById('au-e').value.trim(), pw = document.getElementById('au-p').value;
+  try { crear ? await FB.auth.createUserWithEmailAndPassword(em, pw) : await FB.auth.signInWithEmailAndPassword(em, pw); SYNC_ERR = ''; }
+  catch (e) { SYNC_ERR = authMsg(e); render(); }
+}
+function cuentaHtml() {
+  if (!FIREBASE_CONFIG) return '<p class="muted small" style="margin:0">La sincronización entre dispositivos todavía no está configurada.</p>';
+  if (!FB) return '<p class="muted small" style="margin:0">Necesitas internet para iniciar sesión.</p>';
+  const err = SYNC_ERR ? `<p class="small" style="color:var(--bad);margin:8px 0 0">${esc(SYNC_ERR)}</p>` : '';
+  if (USER) return `<p style="margin:0">✅ Conectado como <b>${esc(USER.email || 'tu cuenta')}</b></p><p class="muted small" style="margin:4px 0 0">Tu progreso se guarda en la nube y se comparte entre tus dispositivos.${LAST_SYNC ? ` Última sincronización: ${LAST_SYNC.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}.` : ''}</p>${err}
+    <div class="row-actions"><button class="chip" id="au-sync">🔄 Sincronizar ahora</button><button class="chip" id="au-out">Cerrar sesión</button></div>`;
+  return `<p class="muted small" style="margin:0 0 10px">Inicia sesión con la misma cuenta en tu celular y en tu computador para que tu progreso sea el mismo en los dos.</p>
+    <button class="btn primary" id="au-g" style="width:100%">Entrar con Google</button>
+    <p class="muted small" style="text-align:center;margin:12px 0 6px">o con correo y contraseña</p>
+    <label class="field" style="margin:4px 0">Correo<input type="text" id="au-e" inputmode="email" autocomplete="email"></label>
+    <label class="field" style="margin:4px 0">Contraseña<input type="password" id="au-p" autocomplete="current-password" class="pw"></label>
+    <div class="row-actions"><button class="chip" id="au-in">Entrar</button><button class="chip" id="au-new">Crear cuenta</button></div>${err}`;
+}
+function bindCuenta() {
+  const g = document.getElementById('au-g'); if (g) g.onclick = loginGoogle;
+  const i = document.getElementById('au-in'); if (i) i.onclick = () => loginEmail(false);
+  const n = document.getElementById('au-new'); if (n) n.onclick = () => loginEmail(true);
+  const o = document.getElementById('au-out'); if (o) o.onclick = async () => { await FB.auth.signOut(); USER = null; render(); };
+  const y = document.getElementById('au-sync'); if (y) y.onclick = async () => { y.textContent = 'Sincronizando…'; await pull(); };
+}
 let CUR = (() => { try { return JSON.parse(localStorage.getItem(KEY_CUR)); } catch (e) { return null; } })();
 function saveCur() { try { CUR ? localStorage.setItem(KEY_CUR, JSON.stringify(CUR)) : localStorage.removeItem(KEY_CUR); } catch (e) {} }
 function applyTheme() { if (S.theme === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', S.theme); }
@@ -444,6 +540,7 @@ function renderHome() {
     </section>
     ${resume}
     ${installCard()}
+    ${FIREBASE_CONFIG && FB && !USER ? '<div class="card note">☁️ <b>Inicia sesión</b> para tener el mismo progreso en tu celular y tu computador. <button class="link-btn" data-go="settings">Ir a Ajustes →</button></div>' : ''}
     ${homeAvisos(dExam, doneToday)}
     <div class="grid2">
       <button class="card action main" id="practica"><span class="ico">${ICON.play}</span><div><b>${doneToday ? 'Siguiente bloque' : 'Práctica de hoy'}</b><span>Bloque de ${S.daily} preguntas mezcladas, adaptadas a tu nivel · ~${Math.round(S.daily * 2.4)} min</span></div></button>
@@ -921,6 +1018,8 @@ function renderSettings() {
       <label class="field">Apariencia
         <div class="tabs" style="margin:0">${['auto', 'light', 'dark'].map(m => `<button data-theme="${m}" class="${S.theme === m ? 'on' : ''}">${{ auto: 'Automática', light: 'Clara', dark: 'Oscura' }[m]}</button>`).join('')}</div></label>
     </div>
+    <h2 class="section">Cuenta y sincronización</h2>
+    <div class="card">${cuentaHtml()}</div>
     <h2 class="section">Tu progreso</h2>
     <div class="card">
       <p class="muted small" style="margin-top:0">Todo se guarda solo en este navegador. Descarga una copia para no perderla o para pasarla a otro dispositivo.</p>
@@ -938,6 +1037,7 @@ function renderSettings() {
     </div>`;
   bindGo();
   document.getElementById('exam').onchange = e => { S.exam = e.target.value || S.exam; save(); };
+  bindCuenta();
   document.getElementById('think').onchange = e => { S.thinkFirst = e.target.checked; save(); };
   document.getElementById('goal').onchange = e => { const v = parseInt(e.target.value, 10); if (v >= 10 && v <= 200) { S.goal = v; save(); } };
   document.getElementById('daily').onchange = e => { const v = parseInt(e.target.value, 10); if (v >= 5 && v <= 60) { S.daily = v; save(); } };
@@ -956,4 +1056,5 @@ function renderSettings() {
   };
 }
 
+initSync();
 render();

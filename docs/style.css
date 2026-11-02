@@ -202,3 +202,4 @@ details.review > summary { list-style: none; cursor: pointer; margin-bottom: 0; 
 details.review > summary::-webkit-details-marker { display: none; }
 details.review[open] > summary { margin-bottom: 10px; }
 details.review { padding: 14px 16px; }
+input.pw { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; }
