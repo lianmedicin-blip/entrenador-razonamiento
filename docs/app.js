@@ -330,7 +330,7 @@ function ejemploHtml(t) {
   const L = Math.min(lvlOf(t), 1);
   const pool = b.filter(x => x.n === NIV[L] && !S.seen[x.i]);
   const it = (pool.length ? pool : b)[rnd(pool.length || b.length)];
-  const q = { t, it, order: [0, 1, 2, 3, 4], ans: null };
+  const q = { t, it, order: shuffle([0, 1, 2, 3, 4]), ans: null };
   const fig = isFigOpts(q);
   const opts = q.order.map((orig, pos) => `<button class="opt${orig === 0 ? ' right' : ''}" disabled><span class="letter">${LETRAS[pos]}</span>${optHtml(q, orig)}</button>`).join('');
   S.seen[it.i] = 1; save();
@@ -522,7 +522,7 @@ function renderQuiz() {
     <div class="qmeta"><span>${sim ? `Pregunta ${CUR.i + 1}` : `${TIPOS[q.t].n} · ${NIV_TXT[NIV.indexOf(q.it.n)]}`}</span>${sim ? '' : `<button class="link-btn" id="how">¿Cómo se resuelve?</button>`}</div>
     <div id="pace" class="pace"></div>
     ${qBlock(q)}
-    ${!sim && !fb && S.thinkFirst !== false && !q.revealed ? `<div class="think"><p><b>Primero piensa tu respuesta</b> sin mirar las opciones: ¿qué regla ves y cómo debería ser lo que falta?</p><button class="btn primary" id="reveal">Ya la pensé · ver opciones</button></div>` : `<div class="options${fig ? ' fig' : ''}">${opts}</div>
+    ${!sim && !fb && S.thinkFirst !== false && !q.revealed && q.t !== 'intrusa' ? `<div class="think"><p><b>Primero piensa tu respuesta</b> sin mirar las opciones: ¿qué regla ves y cómo debería ser lo que falta?</p><button class="btn primary" id="reveal">Ya la pensé · ver opciones</button></div>` : `<div class="options${fig ? ' fig' : ''}">${opts}</div>
     ${!sim && !fb ? `<div class="checkrow"><span class="muted small">Comprobar:</span><button class="btn" id="dudo" ${q.ans === null ? 'disabled' : ''}>Tengo dudas</button><button class="btn primary" id="next" ${q.ans === null ? 'disabled' : ''}>Estoy seguro</button></div>` : ''}`}
     ${fb ? `<div id="fb">${feedbackHtml(q)}${q.ok ? '' : causeHtml(q)}<div class="row-actions"><a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos de este tipo</a></div></div>` : ''}
     <div class="navbar"><div class="in">
@@ -618,6 +618,7 @@ function finish() {
   stopClock();
   const today = hoy();
   const res = { id: CUR.id, date: today, mode: CUR.mode, total: CUR.items.length, correct: 0, mins: Math.round(CUR.elapsed / 60), byType: {}, conf: { seguro: [0, 0], dudo: [0, 0] }, causes: {}, secs: 0 };
+  const made = new Set();
   CUR.items.forEach((q, idx) => {
     const ok = q.ans !== null && q.order[q.ans] === 0;
     q.ok = ok;
@@ -626,21 +627,34 @@ function finish() {
     if (!ok && q.cause) res.causes[q.cause] = (res.causes[q.cause] || 0) + 1;
     res.secs += q.time || 0;
     const bt = res.byType[q.t] || (res.byType[q.t] = [0, 0]); bt[1]++; if (ok) bt[0]++;
+    // las preguntas en blanco (saltadas o abandonadas) no cuentan para tu nivel ni para los repasos
+    if (q.ans === null) return;
     S.seen[q.it.i] = 1;
-    const h = histOf(q.t);
-    h.n++; h.tot++; if (ok) { h.c++; h.ok++; }
-    h.all.push(ok ? 1 : 0); if (h.all.length > 30) h.all.shift();
-    if (h.n >= 8) {
-      const acc = h.c / h.n, L = lvlOf(q.t);
-      if (acc > 0.85 && L < 3) S.lvl[q.t] = L + 1;
-      else if (acc < 0.7 && L > 0) S.lvl[q.t] = L - 1;
-      h.n = 0; h.c = 0;
+    // el simulacro mide, no ajusta: no cambia tu nivel ni tus porcentajes por tipo
+    if (CUR.mode !== 'simulacro') {
+      const h = histOf(q.t);
+      h.n++; h.tot++; if (ok) { h.c++; h.ok++; }
+      h.all.push(ok ? 1 : 0); if (h.all.length > 30) h.all.shift();
+      if (h.n >= 8) {
+        const acc = h.c / h.n, L = lvlOf(q.t);
+        if (acc > 0.85 && L < 3) S.lvl[q.t] = L + 1;
+        else if (acc < 0.7 && L > 0) S.lvl[q.t] = L - 1;
+        h.n = 0; h.c = 0;
+      }
     }
     if (q.revId) { const r = S.rev.find(x => x.id === q.revId); if (r) r.done = true; }
+    // acertar dudando también merece un repaso (a 3 días), si esa regla no tiene uno pendiente
+    if (ok && q.conf === 'dudo' && !S.rev.some(r => !r.done && r.t === q.t && r.r === q.it.r)) {
+      S.rev.push({ id: `${CUR.id}-${idx}-dudo`, src: `${CUR.id}-${idx}`, t: q.t, r: q.it.r, due: addDays(today, 3), done: false });
+    }
     if (!ok) {
       const fallo = q.ans !== null ? (q.it.f ? q.it.f[q.order[q.ans]] : null) : null;
       const regla = (q.t === 'matriz' && fallo) ? fallo : q.it.r;
       q.revRegla = regla;
+      // un solo calendario por regla y sesión (no se acumulan)
+      const key = q.t + '|' + regla;
+      if (made.has(key)) return;
+      made.add(key);
       S.rev = S.rev.filter(r => r.done || !(r.t === q.t && r.r === regla));
       if (q.cause === 'descuido') { S.desc = S.desc || {}; S.desc[`${CUR.id}-${idx}`] = 1; S.rev.push({ id: `${CUR.id}-${idx}-d3`, src: `${CUR.id}-${idx}`, t: q.t, r: regla, due: addDays(today, 3), done: false }); return; }
       [1, 3, 7].forEach(d => S.rev.push({ id: `${CUR.id}-${idx}-${d}`, src: `${CUR.id}-${idx}`, t: q.t, r: regla, due: addDays(today, d), done: false }));
@@ -693,8 +707,10 @@ function renderResults() {
     const f = !q.ok && q.ans !== null && q.it.f ? falloTxt(q.t, q.it.f[q.order[q.ans]]) : '';
     const src = `${s.id}-${idx}`;
     const isDesc = !!(S.desc && S.desc[src]) && !q.ok;
-    return `<div class="card review">
-      <div class="rh"><span class="dot ${q.ok ? 'ok' : 'bad'}">${q.ok ? '✓' : '✗'}</span><span>Pregunta ${idx + 1} · ${TIPOS[q.t].n}</span></div>
+    const n0 = list.findIndex(x => x.idx === idx);
+    const resumen = q.ans === null ? 'en blanco' : q.ok ? 'correcta' : `marcaste ${LETRAS[q.ans]}, era ${LETRAS[corrPos]}`;
+    return `<details class="card review" ${n0 < 2 ? 'open' : ''}>
+      <summary class="rh"><span class="dot ${q.ok ? 'ok' : 'bad'}">${q.ok ? '✓' : '✗'}</span><span>${idx + 1}. ${TIPOS[q.t].n} <span class="muted small">· ${resumen}</span></span></summary>
       ${qBlock(q, true)}
       <div class="options${fig ? ' fig' : ''}">${opts}</div>
       <div class="why">${q.ans === null ? '<p><b>La dejaste en blanco.</b></p>' : q.ok ? '' : `<p><b>Marcaste ${LETRAS[q.ans]}; la correcta es ${LETRAS[corrPos]}.</b> ${esc(f)}</p>`}${q.it.e.map(x => `<p>${esc(x)}</p>`).join('')}</div>
@@ -704,7 +720,7 @@ function renderResults() {
         <a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos</a>
         ${q.ok ? '' : `<button class="chip${isDesc ? ' on' : ''}" data-desc="${src}" data-t="${q.t}" data-r="${esc(q.revRegla || q.it.r)}">${isDesc ? '✓ Marcado como descuido' : 'Fue un descuido'}</button>`}
         ${q.time ? `<span class="chip" style="cursor:default">⏱ ${fmtTime(q.time)}</span>` : ''}
-      </div></div>`;
+      </div></details>`;
   }).join('');
   const byT = Object.entries(s.items.reduce((m, q) => { (m[q.t] = m[q.t] || [0, 0])[1]++; if (q.ok) m[q.t][0]++; return m; }, {}))
     .sort((a, b) => a[1][0] / a[1][1] - b[1][0] / b[1][1]).slice(0, 3);

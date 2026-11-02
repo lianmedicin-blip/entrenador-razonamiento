@@ -43,6 +43,8 @@ def main():
                     assert ok == [0], (tipo, nivel, ok)
                 vistos.add(key)
                 fallos = q.get('fallos') or [None] + [q['regla']] * 4
+                if tipo == 'intrusa':
+                    q['explicacion'] = [x.replace('La figura correcta', 'La figura que no pertenece') for x in q['explicacion']]
                 it = {'i': f"{tipo[:3]}{nivel}{k}", 't': tipo, 'n': nivel, 'r': q['regla'], 's': st, 'o': op,
                       'f': fallos, 'e': q['explicacion']}
                 if q.get('trampa'): it['k'] = list(q['trampa'])

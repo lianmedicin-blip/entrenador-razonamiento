@@ -459,18 +459,18 @@ def gen_operador(nivel, rng):
 def gen_algoritmo(nivel, rng):
     if nivel == 'F':
         x0 = rng.randint(1, 9); ops = []
-        x = x0; code = [f"x ← {x0}"]
+        x = x0; code = [f"x ← {x0}"]; traza = [str(x0)]
         for _ in range(3):
             op = rng.choice(['+', '×', '−'])
             k = rng.randint(2, 5)
             if op == '+': x += k
             elif op == '×': x *= k
             else: x -= k
-            code.append(f"x ← x {op} {k}")
+            code.append(f"x ← x {op} {k}"); traza.append(str(x))
         code.append("mostrar x")
         ans = x; cands = [x + 1, x - 1, x0, x * 2, x + 2]
         regla = 'algoritmo:secuencia'
-        exp = ["Se ejecuta cada línea en orden, de arriba hacia abajo, actualizando x."]
+        exp = ["Se ejecuta cada línea en orden, de arriba hacia abajo, actualizando x.", "x vale: " + " → ".join(traza) + f". Se muestra {x}."]
     elif nivel == 'M' and rng.random() < 0.4:
         n, k, s0 = rng.randint(3, 6), rng.randint(1, 4), rng.randint(0, 5)
         tot = s0 + sum(i * k for i in range(1, n + 1))
@@ -579,6 +579,10 @@ def gen_codificacion(nivel, rng):
         exp = ["Cada palabra se codifica con la suma de las posiciones de sus letras (A=1 … Ñ=15 … Z=27)."]
         regla = 'codigo:suma de posiciones'
     c1, ans = f(w1), f(w2)
+    if nivel == 'MD':
+        exp = exp + [f"{w1}: " + " + ".join(str(ALFA.index(ch) + 1) for ch in w1) + f" = {c1}.", f"{w2}: " + " + ".join(f"{ch}{ALFA.index(ch) + 1}" for ch in w2) + f" = {ans}."]
+    else:
+        exp = exp + [f"{w2} → {ans} (letra por letra: " + ", ".join(f"{a}→{b}" for a, b in zip(w2 if nivel != 'M' else w2[::-1], ans)) + ")."]
     if nivel == 'MD':
         a = int(ans)
         cands = [a + 1, a - 1, sum(ALFA.index(ch) for ch in w2), sum("ABCDEFGHIJKLMNOPQRSTUVWXYZ".index(ch) + 1 for ch in w2),
@@ -918,13 +922,28 @@ def gen_ordenamiento(nivel, rng):
     k = rng.randrange(n)
     etiqueta = ['la persona más alta', 'la segunda persona más alta', 'la tercera persona más alta', 'la cuarta persona más alta', 'la quinta persona más alta', 'la sexta persona más alta']
     pregunta = 'la persona más baja' if k == n - 1 else etiqueta[k]
-    ans = orden[k]
-    ds = [p for p in names if p != ans]
-    rng.shuffle(ds)
-    ds = ds[:4]
-    if len(ds) < 4: ds.append('No se puede saber')
-    q = "\n".join(t for t, _ in clues) + f"\n¿Quién es {pregunta}?"
-    exp = ["Orden de más alto a más bajo: " + " > ".join(orden) + ".", "Tip: dibuja una fila y ve ubicando a cada persona pista por pista."]
+    NSS = 'No se puede saber'
+    indeterminado = False
+    if rng.random() < 0.2:
+        # quitar una pista para que la posición preguntada quede abierta (y verificarlo)
+        for c in rng.sample(clues, len(clues)):
+            rest = [x for x in clues if x is not c]
+            quienes = {[p for p in names if P[p] == k][0] for P in cand(rest)}
+            if len(quienes) >= 2:
+                clues = rest; indeterminado = True; break
+    if indeterminado:
+        ans = NSS
+        ds = rng.sample(names, 4)
+        exp = ["Con estas pistas, más de una persona puede ocupar ese lugar: no se puede saber.",
+               "Ojo: «No se puede saber» es correcto solo cuando de verdad hay dos o más órdenes posibles."]
+    else:
+        ans = orden[k]
+        ds = [p for p in names if p != ans]
+        rng.shuffle(ds)
+        ds = ds[:3] + [NSS]
+        exp = ["Orden de más alto a más bajo: " + " > ".join(orden) + ".", "Tip: dibuja una fila y ve ubicando a cada persona pista por pista."]
+    intro = f"En una fila hay {n} personas: " + ", ".join(sorted(names)[:-1]) + f" y {sorted(names)[-1]}."
+    q = intro + "\n" + "\n".join(t for t, _ in clues) + f"\n¿Quién es {pregunta}?"
     return item('ordenamiento', nivel, 'logica:ordenamiento', q, [ans] + ds, exp, x={'lines': [t for t, _ in clues]})
 
 

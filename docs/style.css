@@ -197,3 +197,8 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600;
 .checkrow .btn { flex: 1; }
 .navbar .in #skip { flex: 1; }
 input[type=time], input[type=text] { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; }
+
+details.review > summary { list-style: none; cursor: pointer; margin-bottom: 0; }
+details.review > summary::-webkit-details-marker { display: none; }
+details.review[open] > summary { margin-bottom: 10px; }
+details.review { padding: 14px 16px; }
