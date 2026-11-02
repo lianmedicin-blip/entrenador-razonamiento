@@ -325,9 +325,25 @@ function openModal(html) {
 }
 function closeModal() { $modal.hidden = true; $modal.innerHTML = ''; }
 function ytLink(t) { return `https://www.youtube.com/results?search_query=${encodeURIComponent(TIPOS[t].yt)}`; }
+function ejemploHtml(t) {
+  const b = BANK[t]; if (!b) return '';
+  const L = Math.min(lvlOf(t), 1);
+  const pool = b.filter(x => x.n === NIV[L] && !S.seen[x.i]);
+  const it = (pool.length ? pool : b)[rnd(pool.length || b.length)];
+  const q = { t, it, order: [0, 1, 2, 3, 4], ans: null };
+  const fig = isFigOpts(q);
+  const opts = q.order.map((orig, pos) => `<button class="opt${orig === 0 ? ' right' : ''}" disabled><span class="letter">${LETRAS[pos]}</span>${optHtml(q, orig)}</button>`).join('');
+  S.seen[it.i] = 1; save();
+  return `<div class="worked"><p class="lvl" style="margin:0 0 8px">Ejemplo resuelto</p>${qBlock(q, true)}<div class="options${fig ? ' fig' : ''}">${opts}</div>
+    <div class="why"><p><b>Solución paso a paso:</b></p>${it.e.map((x, k) => `<p>${k + 1}. ${esc(x)}</p>`).join('')}</div></div>`;
+}
 function showMetodo(t, first) {
+  // ejemplo resuelto completo para principiantes; se retira al subir de nivel (efecto de inversión por experiencia)
+  const conEjemplo = lvlOf(t) <= 1 && BANK[t];
   openModal(`<div class="lesson">${first ? '<p class="lvl" style="margin:0 0 8px">Tipo nuevo para ti</p>' : ''}<h3>Cómo resolver: ${TIPOS[t].n}</h3><ol>${METODO[t].map(x => `<li>${esc(x)}</li>`).join('')}</ol>
-    <a class="chip" href="${ytLink(t)}" target="_blank" rel="noopener">▶ Ver videos que lo explican</a></div>`);
+    ${conEjemplo ? ejemploHtml(t) : (BANK[t] ? '<button class="chip" id="ver-ej">Ver un ejemplo resuelto</button>' : '')}
+    <div class="row-actions"><a class="chip" href="${ytLink(t)}" target="_blank" rel="noopener">▶ Ver videos que lo explican</a></div></div>`);
+  const ve = document.getElementById('ver-ej'); if (ve) ve.onclick = () => { ve.outerHTML = ejemploHtml(t); };
 }
 
 // ------------------------------------------------------------------ vistas
@@ -367,6 +383,7 @@ function renderHome() {
       <div class="stats"><span class="pill">Hoy: ${Math.min(doneToday, 999)}/${S.daily} preguntas</span><span class="pill">🔥 Racha: ${streak} día${streak === 1 ? '' : 's'}</span></div>
     </section>
     ${resume}
+    ${homeAvisos(dExam, doneToday)}
     <div class="grid2">
       <button class="card action main" id="practica"><span class="ico">${ICON.play}</span><div><b>Práctica de hoy</b><span>${S.daily} preguntas mezcladas, adaptadas a tu nivel · ~${Math.round(S.daily * 2.4)} min</span></div></button>
       <button class="card action" id="repaso"><span class="ico">${ICON.redo}</span><b>Repasar errores${due ? `<span class="badge">${due}</span>` : ''}</b><span>${due ? 'Preguntas nuevas sobre lo que fallaste' : 'No tienes repasos pendientes hoy'}</span></button>
@@ -375,7 +392,8 @@ function renderHome() {
     ${!anclaA ? `<div class="card" style="margin-top:12px"><b>${ICON.flag} Prueba ancla A (una sola vez)</b><p class="muted small" style="margin:6px 0 10px">Mide tu punto de partida con preguntas hechas por personas: descarga el <a href="${ANCLA_URL}" target="_blank" rel="noopener">PDF de 50 preguntas de RedOpositor</a>, haz solo las preguntas 1 a 25 en 60 minutos y anota aquí cuántas acertaste. Las 26 a 50 guárdalas para la prueba B, unos días antes del examen.</p><button class="chip" id="ancla">Anotar mi puntaje</button></div>` : ''}
     <h2 class="section">Practicar un tipo</h2>
     <div class="types">${types}</div>
-    <p class="muted small" style="margin-top:22px">Tu progreso se guarda en este dispositivo. Para no perderlo, descarga una copia desde Ajustes de vez en cuando.</p>`;
+    <div class="row-actions" style="margin-top:18px"><button class="chip" id="proto2">📋 Protocolo del día del examen</button></div>
+    <p class="muted small" style="margin-top:14px">Tu progreso se guarda en este dispositivo. Para no perderlo, descarga una copia desde Ajustes de vez en cuando.</p>`;
   bindGo();
   const start = async (mode, opts) => {
     $app.innerHTML = '<div class="spinner"></div>';
@@ -392,7 +410,28 @@ function renderHome() {
   };
   const r = document.getElementById('resume'); if (r) r.onclick = () => go('quiz');
   const an = document.getElementById('ancla'); if (an) an.onclick = () => anclaDialog('A');
+  const pr = document.getElementById('proto'); if (pr) pr.onclick = showProtocolo;
+  const pr2 = document.getElementById('proto2'); if (pr2) pr2.onclick = showProtocolo;
   $app.querySelectorAll('[data-tipo]').forEach(b => b.onclick = () => start('tipo', { tipo: b.dataset.tipo }));
+}
+function homeAvisos(dExam, doneToday) {
+  let h = '';
+  if (S.plan && S.plan.h && doneToday === 0) h += `<div class="card note">📅 Tu plan: practicar a las <b>${esc(S.plan.h)}</b>${S.plan.l ? ` en <b>${esc(S.plan.l)}</b>` : ''}.</div>`;
+  if (doneToday >= S.daily) h += `<div class="card note good">✅ Meta de hoy cumplida. Repartir la práctica en varios días rinde más que hacer mucho en uno: si quieres más, haz como máximo una sesión corta después de un descanso.</div>`;
+  if (dExam >= 0 && dExam <= 3) h += `<div class="card note warn"><b>${dExam === 0 ? 'Hoy es el examen' : dExam === 1 ? 'Mañana es el examen' : 'Semana final'}</b>${dExam >= 2 ? ': menos cantidad y más repaso de errores. Haz la prueba ancla B.' : '.'} <button class="link-btn" id="proto">Ver protocolo del examen →</button></div>`;
+  return h;
+}
+function showProtocolo() {
+  openModal(`<div class="lesson"><h3>Protocolo del día del examen</h3><ol>
+    <li><b>Duerme 7 a 9 horas</b> las dos noches antes: la falta de sueño afecta sobre todo la atención sostenida.</li>
+    <li>El día antes, práctica suave o nada. No intentes aprender cosas nuevas.</li>
+    <li>Computador cargado, buena conexión, cuarto en silencio y celular lejos.</li>
+    <li><b>Lee las instrucciones</b>: ¿se puede volver atrás? ¿restan las malas?</li>
+    <li>Ritmo de ~2,4 min por pregunta: la 10 al minuto 24, la 25 al minuto 60 y la 40 al minuto 96.</li>
+    <li>Si una pasa de 3 minutos, márcala, sáltala y vuelve al final.</li>
+    <li>Antes de marcar: relee la pregunta y comprueba que tu opción cumple <b>todas</b> las reglas (10 segundos).</li>
+    <li>Si no restan las malas, no dejes ninguna en blanco.</li>
+    <li>Si te bloqueas, respira lento unos segundos y pasa a la siguiente.</li></ol></div>`);
 }
 function anclaDialog(k) {
   openModal(`<h3>Prueba ancla ${k}</h3><label class="field">¿Cuántas acertaste de 25?<input type="number" id="anc-v" min="0" max="25" inputmode="numeric"></label>`);
@@ -448,18 +487,23 @@ function isFigOpts(q) { return TIPOS[q.t].g === 'fig' && q.t !== 'cubo'; }
 function fmtTime(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, '0')}`; }
 function elapsed() { return CUR.mode === 'simulacro' ? (Date.now() - CUR.id) / 1000 : CUR.elapsed + (Date.now() - CUR.t0) / 1000; }
 
+const CAUSAS = { regla: 'No conocía la regla', paso: 'Me equivoqué en un paso', descuido: 'Leí mal / descuido', adivine: 'Adiviné' };
+function causeHtml(q) {
+  return `<div class="cause"><p class="small" style="margin:0 0 6px"><b>¿Por qué fallaste?</b> Explicártelo ayuda a no repetirlo.</p><div class="row-actions" style="margin:0">${Object.entries(CAUSAS).map(([k, v]) => `<button class="chip${q.cause === k ? ' on' : ''}" data-cause="${k}">${v}</button>`).join('')}</div></div>`;
+}
 function feedbackHtml(q) {
   const corrPos = q.order.indexOf(0);
   const f = !q.ok && q.ans !== null && q.it.f ? falloTxt(q.t, q.it.f[q.order[q.ans]]) : '';
   const head = q.ans === null ? '<p><b>La dejaste en blanco.</b></p>' : q.ok ? '<p><b>✓ ¡Correcto!</b></p>' : `<p><b>✗ Marcaste ${LETRAS[q.ans]}; la correcta es ${LETRAS[corrPos]}.</b> ${esc(f)}</p>`;
   const k = q.it.k ? `<div class="trap">⚠ La trampa más tentadora era la <b>${LETRAS[q.order.indexOf(q.it.k[0])]}</b>: ${esc(q.it.k[1])}.</div>` : '';
-  return `<div class="why${q.ok ? ' good' : ''}">${head}${q.it.e.map(x => `<p>${esc(x)}</p>`).join('')}</div>${k}`;
+  const hyper = !q.ok && q.conf === 'seguro' ? '<div class="trap">⚡ Estabas seguro y fallaste: lee la explicación con calma. Los errores cometidos con seguridad son los que mejor se corrigen cuando se revisan.</div>' : '';
+  return `<div class="why${q.ok ? ' good' : ''}">${head}${q.it.e.map(x => `<p>${esc(x)}</p>`).join('')}</div>${hyper}${k}`;
 }
 function renderQuiz() {
   if (!CUR) return go('home');
   CUR.t0 = Date.now();
   const q = CUR.items[CUR.i], n = CUR.items.length;
-  q.v = 1;
+  q.v = 1; q.tIn = Date.now(); q.time = q.time || 0;
   const fig = isFigOpts(q);
   const sim = CUR.mode === 'simulacro';
   const fb = !sim && q.checked;
@@ -476,16 +520,21 @@ function renderQuiz() {
     <div class="top"><button class="icon-btn" id="exit">${ICON.back} Salir</button><div style="display:flex;gap:8px;align-items:center"><span class="timer" id="timer"></span><button class="icon-btn" id="map" aria-label="Ver todas las preguntas">▦</button></div></div>
     <div class="qhead"><div class="progress"><i style="width:${(CUR.items.filter(x => x.ans !== null).length) / n * 100}%"></i></div><span class="muted small" style="font-weight:700">${CUR.i + 1}/${n}</span></div>
     <div class="qmeta"><span>${sim ? `Pregunta ${CUR.i + 1}` : `${TIPOS[q.t].n} · ${NIV_TXT[NIV.indexOf(q.it.n)]}`}</span>${sim ? '' : `<button class="link-btn" id="how">¿Cómo se resuelve?</button>`}</div>
+    <div id="pace" class="pace"></div>
     ${qBlock(q)}
-    <div class="options${fig ? ' fig' : ''}">${opts}</div>
-    ${fb ? `<div id="fb">${feedbackHtml(q)}<div class="row-actions"><a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos de este tipo</a></div></div>` : ''}
+    ${!sim && !fb && S.thinkFirst !== false && !q.revealed ? `<div class="think"><p><b>Primero piensa tu respuesta</b> sin mirar las opciones: ¿qué regla ves y cómo debería ser lo que falta?</p><button class="btn primary" id="reveal">Ya la pensé · ver opciones</button></div>` : `<div class="options${fig ? ' fig' : ''}">${opts}</div>
+    ${!sim && !fb ? `<div class="checkrow"><span class="muted small">Comprobar:</span><button class="btn" id="dudo" ${q.ans === null ? 'disabled' : ''}>Tengo dudas</button><button class="btn primary" id="next" ${q.ans === null ? 'disabled' : ''}>Estoy seguro</button></div>` : ''}`}
+    ${fb ? `<div id="fb">${feedbackHtml(q)}${q.ok ? '' : causeHtml(q)}<div class="row-actions"><a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos de este tipo</a></div></div>` : ''}
     <div class="navbar"><div class="in">
       <button class="btn ghost" id="prev" ${CUR.i === 0 ? 'disabled style="opacity:.4"' : ''} aria-label="Anterior">${ICON.back}</button>
       ${fb ? '' : `<button class="btn ghost" id="skip">${q.ans === null ? 'Saltar' : 'Después'}</button>`}
-      <button class="btn primary" id="next" ${!fb && q.ans === null ? 'disabled' : ''}>${mainTxt}</button>
+      ${!sim && !fb ? '' : `<button class="btn primary" id="next" ${!fb && q.ans === null ? 'disabled' : ''}>${mainTxt}</button>`}
     </div></div>`;
-  if (!fb) $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { q.ans = +b.dataset.pos; saveCur(); $app.querySelectorAll('.opt').forEach(o => o.classList.toggle('sel', +o.dataset.pos === q.ans)); document.getElementById('next').disabled = false; const sk = document.getElementById('skip'); if (sk) sk.textContent = 'Después'; });
-  document.getElementById('next').onclick = next;
+  if (!fb) $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { q.ans = +b.dataset.pos; saveCur(); $app.querySelectorAll('.opt').forEach(o => o.classList.toggle('sel', +o.dataset.pos === q.ans)); const nb = document.getElementById('next'); if (nb) nb.disabled = false; const du = document.getElementById('dudo'); if (du) du.disabled = false; const sk = document.getElementById('skip'); if (sk) sk.textContent = 'Después'; });
+  const nx = document.getElementById('next'); if (nx) nx.onclick = () => { if (!sim && !q.checked) q.conf = 'seguro'; next(); };
+  const du = document.getElementById('dudo'); if (du) du.onclick = () => { q.conf = 'dudo'; next(); };
+  const rv = document.getElementById('reveal'); if (rv) rv.onclick = () => { q.revealed = true; saveCur(); renderQuiz(); };
+  $app.querySelectorAll('[data-cause]').forEach(b => b.onclick = () => { q.cause = b.dataset.cause; saveCur(); $app.querySelectorAll('[data-cause]').forEach(o => o.classList.toggle('on', o.dataset.cause === q.cause)); });
   const sk = document.getElementById('skip'); if (sk) sk.onclick = () => advance(true);
   document.getElementById('prev').onclick = () => { if (CUR.i > 0) { stopClock(); CUR.i--; saveCur(); renderQuiz(); window.scrollTo(0, 0); } };
   document.getElementById('exit').onclick = () => { stopClock(); saveCur(); go('home'); };
@@ -496,6 +545,17 @@ function renderQuiz() {
     const el = document.getElementById('timer'); if (!el) return;
     if (CUR.limit) { const left = CUR.limit - elapsed(); el.textContent = '⏱ ' + fmtTime(left); el.classList.toggle('low', left < 600); if (left <= 0) finish(); }
     else el.textContent = '⏱ ' + fmtTime(elapsed());
+    const w = document.getElementById('pace');
+    if (w) {
+      const tq = qTime(q);
+      if (sim) {
+        // ritmo del simulacro: 2,4 min por pregunta
+        const done = CUR.items.filter(x => x.ans !== null).length, debe = Math.floor(elapsed() / 144);
+        w.textContent = done >= debe ? '✓ Vas a buen ritmo' : `⚠ Vas ${debe - done} pregunta${debe - done > 1 ? 's' : ''} atrás del ritmo`;
+        w.className = 'pace' + (done >= debe ? '' : ' warn');
+      } else if (tq > 180 && q.ans === null) { w.textContent = '⏳ Llevas más de 3 min: en el examen conviene saltarla y volver al final.'; w.className = 'pace warn'; }
+      else { w.textContent = ''; w.className = 'pace'; }
+    }
   };
   tick(); if (TIMER) clearInterval(TIMER); TIMER = setInterval(tick, 1000);
   // la primera vez que aparece un tipo, mostrar cómo se resuelve
@@ -503,7 +563,12 @@ function renderQuiz() {
   CUR.intros = CUR.intros || 0;
   if (!sim && CUR.intros < 3 && !S.intro[q.t] && !(S.hist[q.t] && S.hist[q.t].tot)) { S.intro[q.t] = 1; CUR.intros++; save(); saveCur(); showMetodo(q.t, true); }
 }
-function stopClock() { if (CUR) { CUR.elapsed = elapsed(); CUR.t0 = Date.now(); } }
+function stopClock() {
+  if (!CUR) return;
+  CUR.elapsed = elapsed(); CUR.t0 = Date.now();
+  const q = CUR.items[CUR.i]; if (q && q.tIn) { q.time = (q.time || 0) + (Date.now() - q.tIn) / 1000; q.tIn = Date.now(); }
+}
+function qTime(q) { return (q.time || 0) + (q.tIn ? (Date.now() - q.tIn) / 1000 : 0); }
 function showMap() {
   const cells = CUR.items.map((x, k) => `<button class="mapc${x.ans !== null ? ' done' : x.v ? ' skip' : ''}${k === CUR.i ? ' cur' : ''}" data-j="${k}">${k + 1}</button>`).join('');
   const blank = CUR.items.filter(x => x.ans === null).length;
@@ -545,18 +610,21 @@ document.addEventListener('keydown', e => {
   const k = e.key.toUpperCase();
   const idx = '12345'.indexOf(k) >= 0 ? '12345'.indexOf(k) : LETRAS.indexOf(k);
   if (idx >= 0 && k.length === 1) { const b = $app.querySelector(`.opt[data-pos="${idx}"]`); if (b) b.click(); }
-  if (e.key === 'Enter') { const b = document.getElementById('next'); if (b && !b.disabled) next(); }
+  if (e.key === 'Enter') { const b = document.getElementById('next'); if (b && !b.disabled) b.click(); }
 });
 
 function finish() {
   if (TIMER) { clearInterval(TIMER); TIMER = null; }
   stopClock();
   const today = hoy();
-  const res = { id: CUR.id, date: today, mode: CUR.mode, total: CUR.items.length, correct: 0, mins: Math.round(CUR.elapsed / 60), byType: {} };
+  const res = { id: CUR.id, date: today, mode: CUR.mode, total: CUR.items.length, correct: 0, mins: Math.round(CUR.elapsed / 60), byType: {}, conf: { seguro: [0, 0], dudo: [0, 0] }, causes: {}, secs: 0 };
   CUR.items.forEach((q, idx) => {
     const ok = q.ans !== null && q.order[q.ans] === 0;
     q.ok = ok;
     if (ok) res.correct++;
+    if (q.conf && res.conf[q.conf]) { res.conf[q.conf][1]++; if (ok) res.conf[q.conf][0]++; }
+    if (!ok && q.cause) res.causes[q.cause] = (res.causes[q.cause] || 0) + 1;
+    res.secs += q.time || 0;
     const bt = res.byType[q.t] || (res.byType[q.t] = [0, 0]); bt[1]++; if (ok) bt[0]++;
     S.seen[q.it.i] = 1;
     const h = histOf(q.t);
@@ -574,6 +642,7 @@ function finish() {
       const regla = (q.t === 'matriz' && fallo) ? fallo : q.it.r;
       q.revRegla = regla;
       S.rev = S.rev.filter(r => r.done || !(r.t === q.t && r.r === regla));
+      if (q.cause === 'descuido') { S.desc = S.desc || {}; S.desc[`${CUR.id}-${idx}`] = 1; S.rev.push({ id: `${CUR.id}-${idx}-d3`, src: `${CUR.id}-${idx}`, t: q.t, r: regla, due: addDays(today, 3), done: false }); return; }
       [1, 3, 7].forEach(d => S.rev.push({ id: `${CUR.id}-${idx}-${d}`, src: `${CUR.id}-${idx}`, t: q.t, r: regla, due: addDays(today, d), done: false }));
     }
   });
@@ -596,6 +665,16 @@ function falloTxt(t, f) {
   if (t === 'matriz') return 'Tu opción fallaba en: ' + f.split(/;\s*/).map(p => { const [a, r] = p.split(':'); return `${ATTR_TXT[a] || a} (${REGLA_TXT[r] || r})`; }).join(', ') + '.';
   if (t === 'analogia') return 'Tu opción: ' + f.replace('analogia: ', '') + '.';
   return '';
+}
+function planHtml() {
+  const p = S.plan || {};
+  return `<div class="card" style="margin-top:12px"><b>📅 Tu plan para la próxima práctica</b><p class="muted small" style="margin:4px 0 8px">Decidir de antemano cuándo y dónde vas a practicar aumenta mucho la probabilidad de hacerlo.</p>
+    <div class="grid2" style="margin-top:0"><label class="field" style="margin:0">Hora<input type="time" id="plan-h" value="${esc(p.h || '')}"></label><label class="field" style="margin:0">Lugar<input type="text" id="plan-l" value="${esc(p.l || '')}" placeholder="ej. mi escritorio"></label></div>
+    <div class="row-actions"><button class="chip" id="plan-ok">Guardar plan</button></div></div>`;
+}
+function bindPlan() {
+  const b = document.getElementById('plan-ok'); if (!b) return;
+  b.onclick = () => { S.plan = { h: document.getElementById('plan-h').value, l: document.getElementById('plan-l').value.trim(), date: hoy() }; save(); b.textContent = '✓ Plan guardado'; };
 }
 let RTAB = 'mal';
 function renderResults() {
@@ -624,19 +703,29 @@ function renderResults() {
         <button class="chip" data-how="${q.t}">📘 Cómo se resuelve</button>
         <a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos</a>
         ${q.ok ? '' : `<button class="chip${isDesc ? ' on' : ''}" data-desc="${src}" data-t="${q.t}" data-r="${esc(q.revRegla || q.it.r)}">${isDesc ? '✓ Marcado como descuido' : 'Fue un descuido'}</button>`}
+        ${q.time ? `<span class="chip" style="cursor:default">⏱ ${fmtTime(q.time)}</span>` : ''}
       </div></div>`;
   }).join('');
   const byT = Object.entries(s.items.reduce((m, q) => { (m[q.t] = m[q.t] || [0, 0])[1]++; if (q.ok) m[q.t][0]++; return m; }, {}))
     .sort((a, b) => a[1][0] / a[1][1] - b[1][0] / b[1][1]).slice(0, 3);
   $app.innerHTML = topBar(true, 'Resultados') + `
     <div class="card"><div class="score">${ring(p)}<div><h1>${ok} de ${tot}</h1><p>${msg} · ${Math.round(s.elapsed / 60)} min</p>
-      ${byT.length ? `<p class="small" style="margin-top:8px">A reforzar: ${byT.filter(x => x[1][0] < x[1][1]).map(x => TIPOS[x[0]].n).join(', ') || 'nada, ¡todo bien!'}</p>` : ''}</div></div></div>
+      ${byT.length ? `<p class="small" style="margin-top:8px">A reforzar: ${byT.filter(x => x[1][0] < x[1][1]).map(x => TIPOS[x[0]].n).join(', ') || 'nada, ¡todo bien!'}</p>` : ''}</div></div>
+      ${(() => {
+        const avg = s.items.reduce((a, q) => a + (q.time || 0), 0) / tot;
+        const seg = s.items.filter(q => q.conf === 'seguro'), dud = s.items.filter(q => q.conf === 'dudo');
+        const pc = arr => arr.length ? Math.round(arr.filter(q => q.ok).length / arr.length * 100) + '%' : '—';
+        return `<div class="kv"><span>Tiempo promedio por pregunta</span><span class="${avg > 144 ? 'bad-t' : ''}">${fmtTime(avg)} <span class="muted small">(meta ≤ 2:24)</span></span></div>` +
+          (seg.length + dud.length ? `<div class="kv"><span>Acierto cuando estabas seguro</span><span>${pc(seg)} <span class="muted small">(${seg.length})</span></span></div><div class="kv"><span>Acierto cuando dudabas</span><span>${pc(dud)} <span class="muted small">(${dud.length})</span></span></div>` : '');
+      })()}</div>
+    ${s.mode !== 'simulacro' ? planHtml() : ''}
     <div class="tabs"><button data-tab="mal" class="${RTAB === 'mal' ? 'on' : ''}">Mis errores (${tot - ok})</button><button data-tab="todas" class="${RTAB === 'todas' ? 'on' : ''}">Todas (${tot})</button></div>
     ${cards || '<div class="empty">¡Ningún error! 🎉</div>'}
     <p class="muted small">Las preguntas que fallaste vuelven en versiones nuevas mañana, en 3 días y en 7 días. Si fallaste por leer rápido y no por no saber la regla, márcala como «descuido»: vuelve una sola vez y te recordamos leer con calma.</p>
     <div class="navbar"><div class="in"><button class="btn primary" data-go="home">Volver al inicio</button></div></div>`;
   bindGo();
   $app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { RTAB = b.dataset.tab; renderResults(); });
+  bindPlan();
   $app.querySelectorAll('[data-how]').forEach(b => b.onclick = () => showMetodo(b.dataset.how));
   $app.querySelectorAll('[data-desc]').forEach(b => b.onclick = () => {
     const src = b.dataset.desc;
@@ -654,7 +743,7 @@ function renderProgress() {
   const ss = S.sessions.slice(-20);
   let chart = '<div class="empty">Cuando hagas tu primera práctica, aquí verás cómo vas.</div>';
   if (ss.length) {
-    const W = 300, H = 190, pad = 34, n = ss.length;
+    const W = 300, H = 190, pad = 44, n = ss.length;
     const X = i => n === 1 ? W / 2 : pad + i * (W - 2 * pad) / (n - 1), Y = v => H - pad - v * (H - 2 * pad);
     let g = '';
     [0, .5, .7, .85, 1].forEach(v => { g += `<line x1="${pad}" x2="${W - pad}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" ${v === .85 ? 'stroke-dasharray="6 5"' : ''}/><text x="${pad - 6}" y="${Y(v) + 5}" text-anchor="end" font-size="13" fill="var(--ink-3)">${v * 100}%</text>`; });
@@ -676,6 +765,15 @@ function renderProgress() {
       <div class="card"><span class="muted small">Último simulacro</span><h2 style="margin:4px 0 0">${sims.length ? `${sims[sims.length - 1].correct}/50` : '—'}</h2></div>
       <div class="card"><span class="muted small">Pruebas ancla</span><h2 style="margin:4px 0 0">${S.anchors.length ? S.anchors.map(a => `${a.k}: ${a.v}/25`).join(' · ') : '—'}</h2></div>
     </div>
+    ${(() => {
+      const c = {}; let sg = [0, 0], du = [0, 0];
+      S.sessions.forEach(x => { Object.entries(x.causes || {}).forEach(([k, v]) => c[k] = (c[k] || 0) + v); if (x.conf) { sg[0] += x.conf.seguro[0]; sg[1] += x.conf.seguro[1]; du[0] += x.conf.dudo[0]; du[1] += x.conf.dudo[1]; } });
+      const tc = Object.values(c).reduce((a, b) => a + b, 0);
+      if (!tc && !sg[1] && !du[1]) return '';
+      return `<h2 class="section">Cómo te equivocas</h2><div class="card">${Object.entries(CAUSAS).map(([k, v]) => `<div class="kv"><span>${v}</span><span class="muted">${c[k] || 0}${tc ? ` · ${Math.round((c[k] || 0) / tc * 100)}%` : ''}</span></div>`).join('')}
+        ${sg[1] ? `<div class="kv"><span>Acierto cuando estabas seguro</span><span class="muted">${Math.round(sg[0] / sg[1] * 100)}% (${sg[1]})</span></div>` : ''}${du[1] ? `<div class="kv"><span>Acierto cuando dudabas</span><span class="muted">${Math.round(du[0] / du[1] * 100)}% (${du[1]})</span></div>` : ''}
+        <p class="muted small" style="margin:8px 0 0">${(c.descuido || 0) / (tc || 1) >= 0.3 ? 'Muchos errores son por leer rápido: usa siempre la rutina de 10 segundos antes de marcar.' : (c.regla || 0) / (tc || 1) >= 0.4 ? 'La mayoría de errores son por no conocer la regla: abre «¿Cómo se resuelve?» y mira el ejemplo resuelto antes de practicar ese tipo.' : 'Sigue marcando por qué fallas: así la app y tú saben qué reforzar.'}</p></div>`;
+    })()}
     <h2 class="section">Por tipo (de más débil a más fuerte)</h2>
     <div class="card">${rows}</div>
     <div class="row-actions" style="margin-top:14px">${!S.anchors.find(a => a.k === 'A') ? '<button class="chip" data-anc="A">Anotar prueba ancla A</button>' : ''}<button class="chip" data-anc="B">Anotar prueba ancla B</button></div>`;
@@ -689,6 +787,7 @@ function renderSettings() {
     <div class="card">
       <label class="field">Fecha de tu examen<input type="date" id="exam" value="${S.exam}"></label>
       <label class="field">Preguntas por práctica diaria<input type="number" id="daily" min="5" max="60" value="${S.daily}"></label>
+      <label class="field" style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" id="think" ${S.thinkFirst !== false ? 'checked' : ''} style="width:20px;height:20px"> Pensar mi respuesta antes de ver las opciones (en práctica)</label>
       <label class="field">Apariencia
         <div class="tabs" style="margin:0">${['auto', 'light', 'dark'].map(m => `<button data-theme="${m}" class="${S.theme === m ? 'on' : ''}">${{ auto: 'Automática', light: 'Clara', dark: 'Oscura' }[m]}</button>`).join('')}</div></label>
     </div>
@@ -702,11 +801,14 @@ function renderSettings() {
       <p style="margin-top:0"><b>Se adapta a ti.</b> Cada tipo de pregunta tiene su propio nivel (1 a 4). Después de 8 respuestas de un tipo, si aciertas más del 85% sube de nivel; si aciertas menos del 70%, baja.</p>
       <p><b>Repite tus errores.</b> Cada error vuelve con una pregunta nueva de la misma regla al día siguiente, a los 3 días y a los 7 días (repaso espaciado).</p>
       <p><b>Mezcla los tipos.</b> Practicar tipos mezclados ayuda a reconocer qué regla usar, como en el examen real.</p>
+      <p><b>Corrige al instante y te pregunta por qué fallaste.</b> Explicarte el error y revisar con calma los errores que cometiste estando seguro ayuda a no repetirlos.</p>
+      <p><b>Ejemplos resueltos al empezar.</b> En los primeros niveles te muestra un ejemplo resuelto paso a paso; al subir de nivel deja de mostrarlos, porque ya estorban.</p>
       <p><b>Preguntas comprobadas.</b> Las de figuras y las de lógica se comprueban por código para que solo una opción sea correcta; en las numéricas la respuesta se calcula. Las analogías verbales están escritas a mano. Si ves una pregunta que crees mal hecha, avísale a quien te ayuda a mantener la app.</p>
       <p style="margin-bottom:0" class="muted">Código abierto: <a href="https://github.com/lianmedicin-blip/entrenador-razonamiento" target="_blank" rel="noopener">github.com/lianmedicin-blip/entrenador-razonamiento</a></p>
     </div>`;
   bindGo();
   document.getElementById('exam').onchange = e => { S.exam = e.target.value || S.exam; save(); };
+  document.getElementById('think').onchange = e => { S.thinkFirst = e.target.checked; save(); };
   document.getElementById('daily').onchange = e => { const v = parseInt(e.target.value, 10); if (v >= 5 && v <= 60) { S.daily = v; save(); } };
   $app.querySelectorAll('[data-theme]').forEach(b => b.onclick = () => { S.theme = b.dataset.theme; save(); applyTheme(); renderSettings(); });
   document.getElementById('exp').onclick = () => {
