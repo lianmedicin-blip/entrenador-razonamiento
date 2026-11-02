@@ -459,6 +459,7 @@ function renderQuiz() {
   if (!CUR) return go('home');
   CUR.t0 = Date.now();
   const q = CUR.items[CUR.i], n = CUR.items.length;
+  q.v = 1;
   const fig = isFigOpts(q);
   const sim = CUR.mode === 'simulacro';
   const fb = !sim && q.checked;
@@ -499,24 +500,33 @@ function renderQuiz() {
   tick(); if (TIMER) clearInterval(TIMER); TIMER = setInterval(tick, 1000);
   // la primera vez que aparece un tipo, mostrar cómo se resuelve
   S.intro = S.intro || {};
-  if (!sim && !S.intro[q.t] && !(S.hist[q.t] && S.hist[q.t].tot)) { S.intro[q.t] = 1; save(); showMetodo(q.t, true); }
+  CUR.intros = CUR.intros || 0;
+  if (!sim && CUR.intros < 3 && !S.intro[q.t] && !(S.hist[q.t] && S.hist[q.t].tot)) { S.intro[q.t] = 1; CUR.intros++; save(); saveCur(); showMetodo(q.t, true); }
 }
 function stopClock() { if (CUR) { CUR.elapsed = elapsed(); CUR.t0 = Date.now(); } }
 function showMap() {
-  const cells = CUR.items.map((x, k) => `<button class="mapc${x.ans !== null ? ' done' : ''}${k === CUR.i ? ' cur' : ''}" data-j="${k}">${k + 1}</button>`).join('');
+  const cells = CUR.items.map((x, k) => `<button class="mapc${x.ans !== null ? ' done' : x.v ? ' skip' : ''}${k === CUR.i ? ' cur' : ''}" data-j="${k}">${k + 1}</button>`).join('');
   const blank = CUR.items.filter(x => x.ans === null).length;
-  openModal(`<h3>Tus preguntas</h3><p class="muted small">Toca un número para ir a esa pregunta. ${blank ? `Te faltan ${blank}.` : 'Ya respondiste todas.'}</p><div class="mapgrid">${cells}</div>${blank === 0 || CUR.mode === 'simulacro' ? '<div class="row-actions"><button class="btn primary" id="fin-now">Terminar y ver resultados</button></div>' : ''}`);
+  openModal(`<h3>Tus preguntas</h3><p class="muted small">Toca un número para ir a esa pregunta. ${blank ? `Te falta${blank > 1 ? 'n' : ''} ${blank}.` : 'Ya respondiste todas.'} <span style="white-space:nowrap">■ respondida · ◌ saltada</span></p><div class="mapgrid">${cells}</div>${blank === 0 || CUR.mode === 'simulacro' ? '<div class="row-actions"><button class="btn primary" id="fin-now">Terminar y ver resultados</button></div>' : ''}`);
   $modal.querySelector('[data-close]').textContent = 'Cerrar';
   $modal.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { stopClock(); CUR.i = +b.dataset.j; saveCur(); closeModal(); renderQuiz(); window.scrollTo(0, 0); });
-  const fn = document.getElementById('fin-now'); if (fn) fn.onclick = () => { closeModal(); finish(); };
+  const fn = document.getElementById('fin-now'); if (fn) fn.onclick = () => { closeModal(); finishConfirm(); };
 }
 function advance(skip) {
   stopClock();
   const n = CUR.items.length;
-  if (CUR.i < n - 1) { CUR.i++; saveCur(); renderQuiz(); window.scrollTo(0, 0); return; }
+  const pend = k => CUR.items[k].ans === null && !(skip && k === CUR.i);
+  // ir a la siguiente pregunta sin responder (después de esta; si no hay, la primera de antes)
+  let j = -1;
+  for (let k = CUR.i + 1; k < n; k++) if (pend(k)) { j = k; break; }
+  if (j < 0 && !skip) for (let k = 0; k < CUR.i; k++) if (pend(k)) { j = k; break; }
+  if (j >= 0) { CUR.i = j; saveCur(); renderQuiz(); window.scrollTo(0, 0); return; }
+  finishConfirm();
+}
+function finishConfirm() {
   const blanks = CUR.items.map((x, k) => x.ans === null ? k : -1).filter(k => k >= 0);
   if (!blanks.length) return finish();
-  openModal(`<h3>Te faltan ${blanks.length} pregunta${blanks.length > 1 ? 's' : ''}</h3><p class="muted">Puedes volver a ${blanks.length > 1 ? 'ellas' : 'ella'} o terminar así (las que quedan en blanco cuentan como error).</p><div class="row-actions"><button class="btn primary" id="go-blank">Ir a la primera sin responder</button><button class="btn" id="fin-anyway">Terminar así</button></div>`);
+  openModal(`<h3>Te falta${blanks.length > 1 ? 'n' : ''} ${blanks.length} pregunta${blanks.length > 1 ? 's' : ''}</h3><p class="muted">Puedes volver a ${blanks.length > 1 ? 'ellas' : 'ella'} o terminar así (las que quedan en blanco cuentan como error).</p><div class="row-actions"><button class="btn primary" id="go-blank">Ir a la primera sin responder</button><button class="btn" id="fin-anyway">Terminar así</button></div>`);
   $modal.querySelector('[data-close]').textContent = 'Cancelar';
   document.getElementById('go-blank').onclick = () => { closeModal(); CUR.i = blanks[0]; saveCur(); renderQuiz(); window.scrollTo(0, 0); };
   document.getElementById('fin-anyway').onclick = () => { closeModal(); finish(); };
@@ -644,10 +654,10 @@ function renderProgress() {
   const ss = S.sessions.slice(-20);
   let chart = '<div class="empty">Cuando hagas tu primera práctica, aquí verás cómo vas.</div>';
   if (ss.length) {
-    const W = 360, H = 200, pad = 32, n = ss.length;
+    const W = 300, H = 190, pad = 34, n = ss.length;
     const X = i => n === 1 ? W / 2 : pad + i * (W - 2 * pad) / (n - 1), Y = v => H - pad - v * (H - 2 * pad);
     let g = '';
-    [0, .5, .7, .85, 1].forEach(v => { g += `<line x1="${pad}" x2="${W - pad}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" ${v === .85 ? 'stroke-dasharray="6 5"' : ''}/><text x="${pad - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink-3)">${v * 100}%</text>`; });
+    [0, .5, .7, .85, 1].forEach(v => { g += `<line x1="${pad}" x2="${W - pad}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" ${v === .85 ? 'stroke-dasharray="6 5"' : ''}/><text x="${pad - 6}" y="${Y(v) + 5}" text-anchor="end" font-size="13" fill="var(--ink-3)">${v * 100}%</text>`; });
     const pts = ss.map((s, i) => [X(i), Y(s.correct / s.total)]);
     g += `<polyline points="${P(pts)}" fill="none" stroke="var(--primary)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`;
     pts.forEach(([x, y], i) => { g += `<circle cx="${x}" cy="${y}" r="${ss[i].mode === 'simulacro' ? 6 : 4}" fill="${ss[i].mode === 'simulacro' ? 'var(--warn)' : 'var(--primary)'}"/>`; });

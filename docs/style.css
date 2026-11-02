@@ -179,3 +179,4 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600;
 .mapc { height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; cursor: pointer; }
 .mapc.done { background: var(--primary-soft); color: var(--primary); border-color: transparent; }
 .mapc.cur { outline: 2px solid var(--primary); }
+.mapc.skip { border: 2px dashed var(--warn); }
