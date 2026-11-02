@@ -165,7 +165,7 @@ async function buildSession(mode, opts = {}) {
       const t = weightedPick(w);
       count[t] = (count[t] || 0) + 1;
       if (TIPOS[t].g === 'fig') figs++;
-      const nivel = mode === 'simulacro' ? Math.max(2, lvlOf(t)) : lvlOf(t);
+      const nivel = mode === 'simulacro' ? Math.min(3, lvlOf(t) + 1) : lvlOf(t);
       plan.push({ t, nivel });
     }
   }
@@ -325,8 +325,8 @@ function openModal(html) {
 }
 function closeModal() { $modal.hidden = true; $modal.innerHTML = ''; }
 function ytLink(t) { return `https://www.youtube.com/results?search_query=${encodeURIComponent(TIPOS[t].yt)}`; }
-function showMetodo(t) {
-  openModal(`<div class="lesson"><h3>Cómo resolver: ${TIPOS[t].n}</h3><ol>${METODO[t].map(x => `<li>${esc(x)}</li>`).join('')}</ol>
+function showMetodo(t, first) {
+  openModal(`<div class="lesson">${first ? '<p class="lvl" style="margin:0 0 8px">Tipo nuevo para ti</p>' : ''}<h3>Cómo resolver: ${TIPOS[t].n}</h3><ol>${METODO[t].map(x => `<li>${esc(x)}</li>`).join('')}</ol>
     <a class="chip" href="${ytLink(t)}" target="_blank" rel="noopener">▶ Ver videos que lo explican</a></div>`);
 }
 
@@ -353,7 +353,7 @@ function renderHome() {
   const due = S.rev.filter(r => !r.done && r.due <= today).length;
   const streak = (() => { let n = 0, d = today; const days = new Set(S.sessions.map(s => s.date)); if (!days.has(d)) d = addDays(d, -1); while (days.has(d)) { n++; d = addDays(d, -1); } return n; })();
   const greet = S.sessions.length ? (doneToday >= S.daily ? '¡Meta de hoy cumplida!' : 'Sigamos entrenando') : 'Bienvenido, Julián';
-  const resume = CUR && CUR.items && CUR.items.some(x => x.ans !== null) ? `<button class="card action main" id="resume" style="margin-top:14px;border-color:var(--primary)"><span class="ico">${ICON.play}</span><div><b>Continuar donde ibas</b><span>${CUR.items.filter(x => x.ans !== null).length} de ${CUR.items.length} respondidas</span></div></button>` : '';
+  const resume = CUR && CUR.items ? `<button class="card action main" id="resume" style="margin-top:14px;border-color:var(--primary)"><span class="ico">${ICON.play}</span><div><b>Continuar ${CUR.mode === 'simulacro' ? 'el simulacro (el reloj sigue corriendo)' : 'donde ibas'}</b><span>${CUR.items.filter(x => x.ans !== null).length} de ${CUR.items.length} respondidas</span></div></button>` : '';
   const types = Object.entries(TIPOS).map(([t, info]) => {
     const a = accOf(t);
     return `<button class="type" data-tipo="${t}"><span class="lvl">${NIV_TXT[lvlOf(t)]}</span><b>${info.n}</b><div class="bar"><i style="width:${a === null ? 0 : Math.round(a * 100)}%"></i></div><small>${a === null ? 'Sin practicar' : Math.round(a * 100) + '% de acierto'}</small></button>`;
@@ -387,6 +387,7 @@ function renderHome() {
   document.getElementById('repaso').onclick = () => start('repaso');
   document.getElementById('simulacro').onclick = () => {
     openModal(`<h3>Simulacro de 50 preguntas</h3><p class="muted">Dura 2 horas, como el examen. Busca un lugar tranquilo, sin celular a la mano. Las explicaciones salen al final.</p><p class="muted small">Ritmo sugerido: pregunta 10 al minuto 24, la 25 al minuto 60 y la 40 al minuto 96. Si una te traba más de 3 minutos, sáltala y vuelve.</p><div class="row-actions"><button class="btn primary" id="go-sim">Empezar ahora</button></div>`);
+    $modal.querySelector('[data-close]').textContent = 'Cancelar';
     document.getElementById('go-sim').onclick = () => { closeModal(); start('simulacro'); };
   };
   const r = document.getElementById('resume'); if (r) r.onclick = () => go('quiz');
@@ -445,54 +446,96 @@ function optHtml(q, orig) {
 }
 function isFigOpts(q) { return TIPOS[q.t].g === 'fig' && q.t !== 'cubo'; }
 function fmtTime(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, '0')}`; }
-function elapsed() { return CUR.elapsed + (Date.now() - CUR.t0) / 1000; }
+function elapsed() { return CUR.mode === 'simulacro' ? (Date.now() - CUR.id) / 1000 : CUR.elapsed + (Date.now() - CUR.t0) / 1000; }
 
+function feedbackHtml(q) {
+  const corrPos = q.order.indexOf(0);
+  const f = !q.ok && q.ans !== null && q.it.f ? falloTxt(q.t, q.it.f[q.order[q.ans]]) : '';
+  const head = q.ans === null ? '<p><b>La dejaste en blanco.</b></p>' : q.ok ? '<p><b>✓ ¡Correcto!</b></p>' : `<p><b>✗ Marcaste ${LETRAS[q.ans]}; la correcta es ${LETRAS[corrPos]}.</b> ${esc(f)}</p>`;
+  const k = q.it.k ? `<div class="trap">⚠ La trampa más tentadora era la <b>${LETRAS[q.order.indexOf(q.it.k[0])]}</b>: ${esc(q.it.k[1])}.</div>` : '';
+  return `<div class="why${q.ok ? ' good' : ''}">${head}${q.it.e.map(x => `<p>${esc(x)}</p>`).join('')}</div>${k}`;
+}
 function renderQuiz() {
   if (!CUR) return go('home');
   CUR.t0 = Date.now();
   const q = CUR.items[CUR.i], n = CUR.items.length;
   const fig = isFigOpts(q);
-  const opts = q.order.map((orig, pos) => `<button class="opt${q.ans === pos ? ' sel' : ''}" data-pos="${pos}" aria-label="Opción ${LETRAS[pos]}"><span class="letter">${LETRAS[pos]}</span>${optHtml(q, orig)}</button>`).join('');
   const sim = CUR.mode === 'simulacro';
+  const fb = !sim && q.checked;
+  if (fb) q.ok = q.ans !== null && q.order[q.ans] === 0;
+  const corrPos = q.order.indexOf(0);
+  const opts = q.order.map((orig, pos) => {
+    let cls = q.ans === pos ? ' sel' : '';
+    if (fb) cls = pos === corrPos ? ' right' : pos === q.ans ? ' wrong' : '';
+    return `<button class="opt${cls}" data-pos="${pos}" ${fb ? 'disabled' : ''} aria-label="Opción ${LETRAS[pos]}"><span class="letter">${LETRAS[pos]}</span>${optHtml(q, orig)}</button>`;
+  }).join('');
+  const last = CUR.i === n - 1;
+  const mainTxt = sim ? (last ? 'Terminar' : 'Siguiente') : (fb ? (last ? 'Ver resultados' : 'Siguiente') : 'Comprobar');
   $app.innerHTML = `
-    <div class="top"><button class="icon-btn" id="exit">${ICON.back} Salir</button><span class="timer" id="timer"></span></div>
-    <div class="qhead"><div class="progress"><i style="width:${(CUR.i) / n * 100}%"></i></div><span class="muted small" style="font-weight:700">${CUR.i + 1}/${n}</span></div>
-    <div class="qmeta"><span>${TIPOS[q.t].n} · ${NIV_TXT[NIV.indexOf(q.it.n)]}</span>${sim ? '' : `<button class="link-btn" id="how">¿Cómo se resuelve?</button>`}</div>
+    <div class="top"><button class="icon-btn" id="exit">${ICON.back} Salir</button><div style="display:flex;gap:8px;align-items:center"><span class="timer" id="timer"></span><button class="icon-btn" id="map" aria-label="Ver todas las preguntas">▦</button></div></div>
+    <div class="qhead"><div class="progress"><i style="width:${(CUR.items.filter(x => x.ans !== null).length) / n * 100}%"></i></div><span class="muted small" style="font-weight:700">${CUR.i + 1}/${n}</span></div>
+    <div class="qmeta"><span>${sim ? `Pregunta ${CUR.i + 1}` : `${TIPOS[q.t].n} · ${NIV_TXT[NIV.indexOf(q.it.n)]}`}</span>${sim ? '' : `<button class="link-btn" id="how">¿Cómo se resuelve?</button>`}</div>
     ${qBlock(q)}
     <div class="options${fig ? ' fig' : ''}">${opts}</div>
+    ${fb ? `<div id="fb">${feedbackHtml(q)}<div class="row-actions"><a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos de este tipo</a></div></div>` : ''}
     <div class="navbar"><div class="in">
-      <button class="btn ghost" id="prev" ${CUR.i === 0 ? 'disabled style="opacity:.4"' : ''}>${ICON.back}</button>
-      <button class="btn primary" id="next" ${q.ans === null ? 'disabled' : ''}>${CUR.i === n - 1 ? 'Terminar' : 'Siguiente'}</button>
+      <button class="btn ghost" id="prev" ${CUR.i === 0 ? 'disabled style="opacity:.4"' : ''} aria-label="Anterior">${ICON.back}</button>
+      ${fb ? '' : `<button class="btn ghost" id="skip">${q.ans === null ? 'Saltar' : 'Después'}</button>`}
+      <button class="btn primary" id="next" ${!fb && q.ans === null ? 'disabled' : ''}>${mainTxt}</button>
     </div></div>`;
-  $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { q.ans = +b.dataset.pos; saveCur(); $app.querySelectorAll('.opt').forEach(o => o.classList.toggle('sel', +o.dataset.pos === q.ans)); document.getElementById('next').disabled = false; });
+  if (!fb) $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { q.ans = +b.dataset.pos; saveCur(); $app.querySelectorAll('.opt').forEach(o => o.classList.toggle('sel', +o.dataset.pos === q.ans)); document.getElementById('next').disabled = false; const sk = document.getElementById('skip'); if (sk) sk.textContent = 'Después'; });
   document.getElementById('next').onclick = next;
+  const sk = document.getElementById('skip'); if (sk) sk.onclick = () => advance(true);
   document.getElementById('prev').onclick = () => { if (CUR.i > 0) { stopClock(); CUR.i--; saveCur(); renderQuiz(); window.scrollTo(0, 0); } };
   document.getElementById('exit').onclick = () => { stopClock(); saveCur(); go('home'); };
+  document.getElementById('map').onclick = showMap;
   const how = document.getElementById('how'); if (how) how.onclick = () => showMetodo(q.t);
+  if (fb) { const el = document.getElementById('fb'); if (el && !q._scrolled) { q._scrolled = true; setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50); } }
   const tick = () => {
     const el = document.getElementById('timer'); if (!el) return;
     if (CUR.limit) { const left = CUR.limit - elapsed(); el.textContent = '⏱ ' + fmtTime(left); el.classList.toggle('low', left < 600); if (left <= 0) finish(); }
     else el.textContent = '⏱ ' + fmtTime(elapsed());
   };
   tick(); if (TIMER) clearInterval(TIMER); TIMER = setInterval(tick, 1000);
+  // la primera vez que aparece un tipo, mostrar cómo se resuelve
+  S.intro = S.intro || {};
+  if (!sim && !S.intro[q.t] && !(S.hist[q.t] && S.hist[q.t].tot)) { S.intro[q.t] = 1; save(); showMetodo(q.t, true); }
 }
 function stopClock() { if (CUR) { CUR.elapsed = elapsed(); CUR.t0 = Date.now(); } }
-function next() {
-  const q = CUR.items[CUR.i]; if (q.ans === null) return;
+function showMap() {
+  const cells = CUR.items.map((x, k) => `<button class="mapc${x.ans !== null ? ' done' : ''}${k === CUR.i ? ' cur' : ''}" data-j="${k}">${k + 1}</button>`).join('');
+  const blank = CUR.items.filter(x => x.ans === null).length;
+  openModal(`<h3>Tus preguntas</h3><p class="muted small">Toca un número para ir a esa pregunta. ${blank ? `Te faltan ${blank}.` : 'Ya respondiste todas.'}</p><div class="mapgrid">${cells}</div>${blank === 0 || CUR.mode === 'simulacro' ? '<div class="row-actions"><button class="btn primary" id="fin-now">Terminar y ver resultados</button></div>' : ''}`);
+  $modal.querySelector('[data-close]').textContent = 'Cerrar';
+  $modal.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { stopClock(); CUR.i = +b.dataset.j; saveCur(); closeModal(); renderQuiz(); window.scrollTo(0, 0); });
+  const fn = document.getElementById('fin-now'); if (fn) fn.onclick = () => { closeModal(); finish(); };
+}
+function advance(skip) {
   stopClock();
-  if (CUR.i < CUR.items.length - 1) { CUR.i++; saveCur(); renderQuiz(); window.scrollTo(0, 0); }
-  else {
-    const blank = CUR.items.filter(x => x.ans === null).length;
-    if (blank) { const j = CUR.items.findIndex(x => x.ans === null); CUR.i = j; saveCur(); renderQuiz(); return; }
-    finish();
+  const n = CUR.items.length;
+  if (CUR.i < n - 1) { CUR.i++; saveCur(); renderQuiz(); window.scrollTo(0, 0); return; }
+  const blanks = CUR.items.map((x, k) => x.ans === null ? k : -1).filter(k => k >= 0);
+  if (!blanks.length) return finish();
+  openModal(`<h3>Te faltan ${blanks.length} pregunta${blanks.length > 1 ? 's' : ''}</h3><p class="muted">Puedes volver a ${blanks.length > 1 ? 'ellas' : 'ella'} o terminar así (las que quedan en blanco cuentan como error).</p><div class="row-actions"><button class="btn primary" id="go-blank">Ir a la primera sin responder</button><button class="btn" id="fin-anyway">Terminar así</button></div>`);
+  $modal.querySelector('[data-close]').textContent = 'Cancelar';
+  document.getElementById('go-blank').onclick = () => { closeModal(); CUR.i = blanks[0]; saveCur(); renderQuiz(); window.scrollTo(0, 0); };
+  document.getElementById('fin-anyway').onclick = () => { closeModal(); finish(); };
+}
+function next() {
+  const q = CUR.items[CUR.i];
+  if (CUR.mode !== 'simulacro' && !q.checked) {
+    if (q.ans === null) return;
+    q.checked = true; saveCur(); stopClock(); renderQuiz(); return;
   }
+  if (CUR.mode === 'simulacro' && q.ans === null) return;
+  advance(false);
 }
 document.addEventListener('keydown', e => {
   if (VIEW !== 'quiz' || !CUR || !$modal.hidden) return;
   const k = e.key.toUpperCase();
   const idx = '12345'.indexOf(k) >= 0 ? '12345'.indexOf(k) : LETRAS.indexOf(k);
   if (idx >= 0 && k.length === 1) { const b = $app.querySelector(`.opt[data-pos="${idx}"]`); if (b) b.click(); }
-  if (e.key === 'Enter') next();
+  if (e.key === 'Enter') { const b = document.getElementById('next'); if (b && !b.disabled) next(); }
 });
 
 function finish() {
@@ -520,6 +563,7 @@ function finish() {
       const fallo = q.ans !== null ? (q.it.f ? q.it.f[q.order[q.ans]] : null) : null;
       const regla = (q.t === 'matriz' && fallo) ? fallo : q.it.r;
       q.revRegla = regla;
+      S.rev = S.rev.filter(r => r.done || !(r.t === q.t && r.r === regla));
       [1, 3, 7].forEach(d => S.rev.push({ id: `${CUR.id}-${idx}-${d}`, src: `${CUR.id}-${idx}`, t: q.t, r: regla, due: addDays(today, d), done: false }));
     }
   });
@@ -559,7 +603,7 @@ function renderResults() {
     const k = q.it.k ? `<div class="trap">⚠ La trampa más tentadora era la <b>${LETRAS[q.order.indexOf(q.it.k[0])]}</b>: ${esc(q.it.k[1])}.</div>` : '';
     const f = !q.ok && q.ans !== null && q.it.f ? falloTxt(q.t, q.it.f[q.order[q.ans]]) : '';
     const src = `${s.id}-${idx}`;
-    const isDesc = !S.rev.some(r => r.src === src) && !q.ok;
+    const isDesc = !!(S.desc && S.desc[src]) && !q.ok;
     return `<div class="card review">
       <div class="rh"><span class="dot ${q.ok ? 'ok' : 'bad'}">${q.ok ? '✓' : '✗'}</span><span>Pregunta ${idx + 1} · ${TIPOS[q.t].n}</span></div>
       ${qBlock(q, true)}
@@ -579,15 +623,18 @@ function renderResults() {
       ${byT.length ? `<p class="small" style="margin-top:8px">A reforzar: ${byT.filter(x => x[1][0] < x[1][1]).map(x => TIPOS[x[0]].n).join(', ') || 'nada, ¡todo bien!'}</p>` : ''}</div></div></div>
     <div class="tabs"><button data-tab="mal" class="${RTAB === 'mal' ? 'on' : ''}">Mis errores (${tot - ok})</button><button data-tab="todas" class="${RTAB === 'todas' ? 'on' : ''}">Todas (${tot})</button></div>
     ${cards || '<div class="empty">¡Ningún error! 🎉</div>'}
-    <p class="muted small">Las preguntas que fallaste vuelven en versiones nuevas mañana, en 3 días y en 7 días. Si fallaste por leer rápido y no por no saber la regla, márcala como «descuido» y no se repetirá.</p>
+    <p class="muted small">Las preguntas que fallaste vuelven en versiones nuevas mañana, en 3 días y en 7 días. Si fallaste por leer rápido y no por no saber la regla, márcala como «descuido»: vuelve una sola vez y te recordamos leer con calma.</p>
     <div class="navbar"><div class="in"><button class="btn primary" data-go="home">Volver al inicio</button></div></div>`;
   bindGo();
   $app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { RTAB = b.dataset.tab; renderResults(); });
   $app.querySelectorAll('[data-how]').forEach(b => b.onclick = () => showMetodo(b.dataset.how));
   $app.querySelectorAll('[data-desc]').forEach(b => b.onclick = () => {
     const src = b.dataset.desc;
-    if (S.rev.some(r => r.src === src)) { S.rev = S.rev.filter(r => r.src !== src); }
-    else { const today = hoy(); [1, 3, 7].forEach(d => S.rev.push({ id: `${src}-${d}`, src, t: b.dataset.t, r: b.dataset.r, due: addDays(today, d), done: false })); }
+    const mine = S.rev.filter(r => r.src === src && !r.done);
+    const today = hoy();
+    S.desc = S.desc || {};
+    if (!S.desc[src]) { S.rev = S.rev.filter(r => r.src !== src || r.done); S.rev.push({ id: `${src}-d3`, src, t: b.dataset.t, r: b.dataset.r, due: addDays(today, 3), done: false }); S.desc[src] = 1; }
+    else { S.rev = S.rev.filter(r => r.src !== src || r.done); [1, 3, 7].forEach(d => S.rev.push({ id: `${src}-${d}`, src, t: b.dataset.t, r: b.dataset.r, due: addDays(today, d), done: false })); delete S.desc[src]; }
     save(); const y = window.scrollY; renderResults(); window.scrollTo(0, y);
   });
 }
@@ -597,7 +644,7 @@ function renderProgress() {
   const ss = S.sessions.slice(-20);
   let chart = '<div class="empty">Cuando hagas tu primera práctica, aquí verás cómo vas.</div>';
   if (ss.length) {
-    const W = 640, H = 220, pad = 30, n = ss.length;
+    const W = 360, H = 200, pad = 32, n = ss.length;
     const X = i => n === 1 ? W / 2 : pad + i * (W - 2 * pad) / (n - 1), Y = v => H - pad - v * (H - 2 * pad);
     let g = '';
     [0, .5, .7, .85, 1].forEach(v => { g += `<line x1="${pad}" x2="${W - pad}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" ${v === .85 ? 'stroke-dasharray="6 5"' : ''}/><text x="${pad - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink-3)">${v * 100}%</text>`; });
@@ -645,7 +692,7 @@ function renderSettings() {
       <p style="margin-top:0"><b>Se adapta a ti.</b> Cada tipo de pregunta tiene su propio nivel (1 a 4). Después de 8 respuestas de un tipo, si aciertas más del 85% sube de nivel; si aciertas menos del 70%, baja.</p>
       <p><b>Repite tus errores.</b> Cada error vuelve con una pregunta nueva de la misma regla al día siguiente, a los 3 días y a los 7 días (repaso espaciado).</p>
       <p><b>Mezcla los tipos.</b> Practicar tipos mezclados ayuda a reconocer qué regla usar, como en el examen real.</p>
-      <p><b>Preguntas verificadas.</b> Cada pregunta se generó y se comprobó por código: solo una opción es correcta.</p>
+      <p><b>Preguntas comprobadas.</b> Las de figuras y las de lógica se comprueban por código para que solo una opción sea correcta; en las numéricas la respuesta se calcula. Las analogías verbales están escritas a mano. Si ves una pregunta que crees mal hecha, avísale a quien te ayuda a mantener la app.</p>
       <p style="margin-bottom:0" class="muted">Código abierto: <a href="https://github.com/lianmedicin-blip/entrenador-razonamiento" target="_blank" rel="noopener">github.com/lianmedicin-blip/entrenador-razonamiento</a></p>
     </div>`;
   bindGo();

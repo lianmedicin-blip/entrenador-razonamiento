@@ -606,9 +606,9 @@ def gen_numerico(nivel, rng):
     elif nivel == 'M':
         kind = rng.choice(['tres_inv', 'porc2', 'edades'])
     elif nivel == 'D':
-        kind = rng.choice(['trabajo', 'edades2', 'porc_desc'])
+        kind = rng.choice(['reparto', 'porc_desc', 'edades2'])
     else:
-        kind = rng.choice(['mezcla', 'trabajo', 'reparto'])
+        kind = rng.choice(['mezcla', 'trabajo', 'edades2', 'porc_desc'])
     if kind == 'tres':
         a, p = rng.randint(2, 6), rng.randint(2, 9) * 500
         b = rng.choice([x for x in range(3, 12) if x != a])
@@ -831,25 +831,35 @@ def gen_condicional(nivel, rng):
     mods = [s for s in itertools.product([False, True], repeat=3)
             if all(f(s) for f, _ in reglas) and s[hecho[0]] == hecho[1]]
     if not mods: raise Fallo('inconsistente')
-    est = {}
-    for i in range(3):
-        vals = {s[i] for s in mods}
-        est[i] = None if len(vals) == 2 else vals.pop()
+    nvar = 2 if nivel in ('F', 'M') else 3  # solo personas que aparecen en el enunciado
     def frase(i, v):
         return f"{V[i]} va." if v else f"{V[i]} no va."
-    correctas, incorrectas = [], []
-    for i in range(3):
-        if i == hecho[0]: continue
+    # cada candidata: (texto, predicado sobre un modelo, es_no_se_sabe_de)
+    cands = []
+    for i in range(nvar):
         for v in (True, False):
-            (correctas if est[i] == v else incorrectas).append(frase(i, v))
-        (correctas if est[i] is None else incorrectas).append(f"No se puede saber si {V[i]} va.")
-    # elegir una correcta sobre la variable más relevante (la que no es el hecho)
-    rng.shuffle(correctas)
+            cands.append((frase(i, v), lambda s, i=i, v=v: s[i] == v, None))
+        cands.append((f"No se puede saber si {V[i]} va.", None, i))
+    o1 = [i for i in range(nvar) if i != hecho[0]]
+    a = o1[0]; h = hecho[0]
+    cands += [(f"{V[a]} y {V[h]} van.", lambda s: s[a] and s[h], None),
+              (f"Ni {V[a]} ni {V[h]} van.", lambda s: not s[a] and not s[h], None),
+              (f"{V[a]} va y {V[h]} no va.", lambda s: s[a] and not s[h], None),
+              (f"{V[a]} no va y {V[h]} va.", lambda s: not s[a] and s[h], None)]
+    def correcta(c):
+        txt, f, ns = c
+        if ns is not None:
+            return len({s[ns] for s in mods}) == 2
+        return all(f(s) for s in mods)
+    # la conclusión que se pregunta es sobre una persona distinta del hecho, sola
+    sobre = [c for c in cands if c[0].startswith(tuple(V[i] for i in o1)) or (c[2] in o1)]
+    sobre = [c for c in sobre if ' y ' not in c[0] and not c[0].startswith('Ni ')]
+    correctas = [c for c in sobre if correcta(c)]
+    incorrectas = [c for c in cands if not correcta(c)]
     if not correctas: raise Fallo('sin correcta')
-    corr = correctas[0]
-    # evitar dos opciones correctas: solo incorrectas como distractores
+    corr = rng.choice(correctas)[0]
     rng.shuffle(incorrectas)
-    ds = incorrectas[:4]
+    ds = [c[0] for c in incorrectas[:4]]
     if len(ds) < 4: raise Fallo('pocas')
     hecho_txt = frase(hecho[0], hecho[1])
     q = "\n".join(t for _, t in reglas) + f"\nSe sabe que: {hecho_txt}\n¿Qué se puede concluir con certeza?"
@@ -860,6 +870,10 @@ def gen_condicional(nivel, rng):
         exp.append("«P solo si Q» significa «si P, entonces Q».")
     elif 'a menos' in rid:
         exp.append("«P, a menos que Q» significa «si no Q, entonces P».")
+    elif 'afirmar el antecedente' in rid:
+        exp.append("«Si P entonces Q» con «P» permite concluir «Q».")
+    elif 'cadena' in rid:
+        exp.append("Las dos reglas forman una cadena: si A, entonces B; si B, entonces C. Si no C, entonces no B y no A (contrapositiva). Si C, no se sabe nada de A ni de B.")
     else:
         exp.append("«Si P entonces Q» con «no Q» permite concluir «no P» (contrapositiva).")
     return item('condicional', nivel, rid, q, [corr] + ds, exp, x={'lines': [t for _, t in reglas] + [f"Se sabe que: {hecho_txt}"]})
@@ -952,7 +966,11 @@ def gen_verdad_mentira(nivel, rng):
     others = [desc(s) for s in itertools.product([False, True], repeat=n) if s != sol]
     rng.shuffle(others)
     q = "Cada persona siempre dice la verdad o siempre miente.\n" + "\n".join(f"{names[i]}: «{dichos[i][0]}»" for i in range(n)) + "\n¿Quién o quiénes dicen la verdad?"
-    exp = [f"Solución: {ans}.", "Método: prueba cada combinación (por ejemplo, supón que el primero dice la verdad) y busca contradicciones."]
+    exp = [f"Solución: {ans}.", "Comprobación:"] + [
+        f"{names[i]} {'dice la verdad' if sol[i] else 'miente'}: «{dichos[i][0]}» es {'verdad' if dichos[i][1](sol) else 'falso'} ✓" for i in range(n)]
+    alt = list(sol); alt[0] = not alt[0]
+    malos = [i for i in range(n) if dichos[i][1](alt) != alt[i]]
+    exp.append(f"Si supones lo contrario de {names[0]} ({'que miente' if sol[0] else 'que dice la verdad'}) y dejas a los demás igual, la frase de {names[malos[0]]} deja de cuadrar: contradicción." if malos else "Cualquier otra combinación lleva a una contradicción.")
     return item('verdad_mentira', nivel, 'logica:verdades y mentiras', q, [ans] + others[:4], exp,
                 x={'lines': [f"{names[i]}: «{dichos[i][0]}»" for i in range(n)]})
 
@@ -1015,7 +1033,8 @@ def gen_tabla_logica(nivel, rng):
     rng.shuffle(falsas)
     q = f"{', '.join(names[:-1])} y {names[-1]} " + " y ".join(
         {'color': 'viven cada uno en una casa de distinto color', 'mascota': 'tienen cada uno una mascota distinta',
-         'deporte': 'practican cada uno un deporte distinto'}[x] for x in attrs) + ".\n" + "\n".join(t for t, _, _ in clues) + "\n¿Cuál de estas afirmaciones es cierta?"
+         'deporte': 'practican cada uno un deporte distinto'}[x] for x in attrs) + ".\n" + "\n".join(
+        {'color': 'Colores', 'mascota': 'Mascotas', 'deporte': 'Deportes'}[x] + ': ' + ', '.join(fv(x, v) for v in vals[x]) + '.' for x in attrs) + "\n" + "\n".join(t for t, _, _ in clues) + "\n¿Cuál de estas afirmaciones es cierta?"
     exp = ["Solución: " + "; ".join(f"{pp}: " + ", ".join(sol[x][pp] for x in attrs) for pp in names) + ".",
            "Método: haz una tabla (personas × opciones), marca ✗ con cada pista negativa y completa por descarte."]
     return item('tabla_logica', nivel, 'logica:tabla', q, [corr] + falsas[:4], exp, x={'lines': [t for t, _, _ in clues]})
@@ -1027,27 +1046,27 @@ ANALOGIAS = [
     ('Pez', 'nadar', 'pájaro', 'volar', ['nido', 'pluma', 'árbol', 'cantar'], 'cómo se mueve', 'F'),
     ('Médico', 'hospital', 'profesor', 'colegio', ['libro', 'alumno', 'clase', 'tiza'], 'lugar de trabajo', 'F'),
     ('Tijera', 'cortar', 'lápiz', 'escribir', ['papel', 'punta', 'borrar', 'madera'], 'función', 'F'),
-    ('Frío', 'calor', 'oscuro', 'claro', ['noche', 'negro', 'sombra', 'luz'], 'opuesto', 'F'),
-    ('Dedo', 'mano', 'hoja', 'árbol', ['verde', 'rama', 'raíz', 'otoño'], 'parte-todo', 'F'),
-    ('Perro', 'ladrar', 'gato', 'maullar', ['ronronear', 'cazar', 'dormir', 'saltar'], 'sonido', 'F'),
+    ('Frío', 'calor', 'oscuro', 'claro', ['noche', 'negro', 'sombra', 'día'], 'opuesto', 'F'),
+    ('Dedo', 'mano', 'pétalo', 'flor', ['jardín', 'perfume', 'abeja', 'primavera'], 'parte-todo', 'F'),
+    ('Perro', 'ladrar', 'gato', 'maullar', ['arañar', 'cazar', 'dormir', 'saltar'], 'sonido', 'F'),
     ('Libro', 'leer', 'canción', 'escuchar', ['música', 'radio', 'letra', 'disco'], 'acción típica de quien la recibe', 'F'),
-    ('Semilla', 'planta', 'huevo', 'pollo', ['gallina', 'nido', 'cáscara', 'yema'], 'origen-resultado', 'F'),
+    ('Semilla', 'planta', 'huevo', 'pollo', ['granja', 'nido', 'cáscara', 'yema'], 'origen-resultado', 'F'),
     ('Pintor', 'pincel', 'carpintero', 'martillo', ['madera', 'mesa', 'taller', 'clavo'], 'herramienta', 'F'),
     ('Ojo', 'ver', 'oído', 'oír', ['oreja', 'sonido', 'hablar', 'música'], 'función', 'F'),
     ('Rápido', 'lento', 'alto', 'bajo', ['grande', 'largo', 'altura', 'pequeño'], 'opuesto', 'F'),
     ('Abeja', 'colmena', 'hormiga', 'hormiguero', ['insecto', 'reina', 'tierra', 'trabajo'], 'vivienda', 'F'),
-    ('Lluvia', 'paraguas', 'sol', 'gafas', ['calor', 'verano', 'playa', 'luz'], 'protección', 'M'),
+    ('Lluvia', 'impermeable', 'sol', 'bloqueador', ['calor', 'verano', 'playa', 'nube'], 'protección', 'M'),
     ('Pie', 'zapato', 'mano', 'guante', ['dedo', 'anillo', 'brazo', 'uña'], 'lo que lo cubre', 'M'),
     ('Capitán', 'barco', 'piloto', 'avión', ['aeropuerto', 'vuelo', 'pasajero', 'cielo'], 'quien lo dirige', 'M'),
-    ('Kilómetro', 'distancia', 'kilogramo', 'masa', ['gramo', 'balanza', 'volumen', 'peso neto'], 'unidad-magnitud', 'M'),
+    ('Kilómetro', 'distancia', 'kilogramo', 'masa', ['gramo', 'balanza', 'volumen', 'tonelada'], 'unidad-magnitud', 'M'),
     ('Sed', 'agua', 'hambre', 'comida', ['estómago', 'plato', 'cocina', 'dieta'], 'necesidad-satisfacción', 'M'),
     ('Escritor', 'novela', 'compositor', 'sinfonía', ['piano', 'orquesta', 'nota', 'músico'], 'autor-obra', 'M'),
-    ('Termómetro', 'temperatura', 'reloj', 'tiempo', ['hora', 'alarma', 'aguja', 'pulsera'], 'instrumento-medida', 'M'),
+    ('Termómetro', 'temperatura', 'reloj', 'tiempo', ['cuerda', 'alarma', 'aguja', 'pulsera'], 'instrumento-medida', 'M'),
     ('Cachorro', 'perro', 'potro', 'caballo', ['yegua', 'establo', 'crin', 'jinete'], 'cría-adulto', 'M'),
     ('Mar', 'gota', 'desierto', 'grano', ['sol', 'calor', 'duna', 'oasis'], 'todo-unidad mínima', 'M'),
     ('Hielo', 'sólido', 'vapor', 'gaseoso', ['agua', 'líquido', 'nube', 'frío'], 'estado de la materia', 'D'),
     ('Ciego', 'ver', 'mudo', 'hablar', ['oír', 'gritar', 'silencio', 'boca'], 'incapacidad', 'M'),
-    ('Arquitecto', 'plano', 'músico', 'partitura', ['canción', 'concierto', 'guitarra', 'nota'], 'documento de trabajo', 'D'),
+    ('Arquitecto', 'plano', 'compositor', 'partitura', ['canción', 'concierto', 'guitarra', 'nota'], 'documento que produce', 'D'),
     ('Sequía', 'lluvia', 'ignorancia', 'conocimiento', ['escuela', 'error', 'duda', 'libro'], 'carencia de', 'D'),
     ('Vela', 'cera', 'mesa', 'madera', ['silla', 'mueble', 'carpintero', 'patas'], 'material', 'D'),
     ('Bosque', 'árbol', 'biblioteca', 'libro', ['estante', 'lector', 'silencio', 'página'], 'conjunto-elemento', 'D'),
@@ -1057,13 +1076,33 @@ ANALOGIAS = [
     ('Novela', 'capítulo', 'edificio', 'piso', ['ladrillo', 'ascensor', 'ciudad', 'arquitecto'], 'todo-parte en serie', 'D'),
     ('Prólogo', 'epílogo', 'prefijo', 'sufijo', ['palabra', 'raíz', 'letra', 'acento'], 'antes-después', 'MD'),
     ('Miope', 'gafas', 'cojo', 'muleta', ['pierna', 'caminar', 'silla', 'médico'], 'ayuda para una limitación', 'MD'),
-    ('Erosión', 'roca', 'óxido', 'hierro', ['agua', 'tiempo', 'metal', 'rojo'], 'proceso que desgasta', 'MD'),
+    ('Erosión', 'roca', 'óxido', 'hierro', ['agua', 'tiempo', 'pintura', 'rojo'], 'proceso que desgasta', 'MD'),
     ('Cosecha', 'siembra', 'respuesta', 'pregunta', ['examen', 'duda', 'diálogo', 'solución'], 'efecto-causa', 'MD'),
     ('Pródigo', 'tacaño', 'valiente', 'cobarde', ['héroe', 'miedo', 'fuerte', 'audaz'], 'antónimos', 'MD'),
     ('Mapa', 'territorio', 'partitura', 'música', ['nota', 'pentagrama', 'músico', 'piano'], 'representación-lo representado', 'MD'),
     ('Juez', 'sentencia', 'médico', 'diagnóstico', ['hospital', 'paciente', 'estetoscopio', 'bata'], 'decisión profesional', 'MD'),
     ('Vacuna', 'enfermedad', 'antivirus', 'virus informático', ['computador', 'programa', 'internet', 'contraseña'], 'prevención', 'MD'),
-    ('Germinar', 'semilla', 'eclosionar', 'huevo', ['pollito', 'nido', 'cáscara', 'gallina'], 'proceso de nacer', 'MD'),
+    ('Germinar', 'semilla', 'eclosionar', 'huevo', ['pollito', 'nido', 'cáscara', 'granja'], 'proceso de nacer', 'MD'),
+    ('Llave', 'cerradura', 'contraseña', 'cuenta', ['teclado', 'número', 'secreto', 'usuario'], 'lo que abre', 'F'),
+    ('Agua', 'sed', 'comida', 'hambre', ['plato', 'cocina', 'cena', 'sal'], 'lo que quita', 'F'),
+    ('Pluma', 'ave', 'escama', 'pez', ['mar', 'aleta', 'agua', 'red'], 'cubierta del cuerpo', 'F'),
+    ('Zapatero', 'zapato', 'panadero', 'pan', ['harina', 'horno', 'panadería', 'trigo'], 'quien lo hace', 'F'),
+    ('Enero', 'febrero', 'lunes', 'martes', ['semana', 'domingo', 'día', 'miércoles'], 'el que sigue', 'F'),
+    ('Volante', 'conducir', 'remo', 'remar', ['bote', 'agua', 'río', 'nadar'], 'herramienta-acción', 'F'),
+    ('Mesa', 'mueble', 'manzana', 'fruta', ['árbol', 'roja', 'jugo', 'semilla'], 'ejemplar-categoría', 'M'),
+    ('Ruido', 'silencio', 'guerra', 'paz', ['batalla', 'soldado', 'tregua', 'victoria'], 'opuesto', 'M'),
+    ('Lento', 'tortuga', 'veloz', 'guepardo', ['carrera', 'perro', 'velocidad', 'pista'], 'cualidad típica (al revés)', 'M'),
+    ('Estudiante', 'aprobar', 'atleta', 'clasificar', ['correr', 'entrenar', 'medalla', 'estadio'], 'logro buscado', 'M'),
+    ('Gota', 'lluvia', 'copo', 'nieve', ['frío', 'invierno', 'hielo', 'montaña'], 'unidad-fenómeno', 'M'),
+    ('Isla', 'agua', 'oasis', 'desierto', ['palmera', 'arena', 'camello', 'sed'], 'lo que la rodea', 'D'),
+    ('Calendario', 'días', 'diccionario', 'palabras', ['libro', 'idioma', 'letras', 'significado'], 'lo que ordena', 'D'),
+    ('Ancla', 'barco', 'freno', 'carro', ['rueda', 'velocidad', 'motor', 'calle'], 'lo que lo detiene', 'D'),
+    ('Fiebre', 'infección', 'humo', 'fuego', ['ceniza', 'chimenea', 'gris', 'aire'], 'señal-causa', 'D'),
+    ('Ensayo', 'obra de teatro', 'entrenamiento', 'partido', ['equipo', 'cancha', 'balón', 'gol'], 'preparación-evento', 'D'),
+    ('Raíz', 'árbol', 'cimiento', 'edificio', ['ladrillo', 'techo', 'piso', 'arquitecto'], 'base que sostiene', 'MD'),
+    ('Brújula', 'orientarse', 'balanza', 'pesar', ['medir', 'equilibrio', 'kilo', 'comprar'], 'instrumento-función', 'MD'),
+    ('Hipótesis', 'experimento', 'pregunta', 'investigación', ['respuesta', 'científico', 'laboratorio', 'duda'], 'lo que pone a prueba', 'MD'),
+    ('Mentira', 'confianza', 'sequía', 'cosecha', ['lluvia', 'campo', 'agua', 'sol'], 'lo que daña', 'MD'),
 ]
 
 def banco_analogias(rng):

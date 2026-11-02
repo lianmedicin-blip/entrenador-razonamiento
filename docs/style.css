@@ -173,3 +173,9 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600;
   .numgrid td { width: 56px; height: 50px; font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.why.good { background: var(--ok-soft); }
+.mapgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 8px; margin-top: 12px; }
+.mapc { height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; cursor: pointer; }
+.mapc.done { background: var(--primary-soft); color: var(--primary); border-color: transparent; }
+.mapc.cur { outline: 2px solid var(--primary); }
