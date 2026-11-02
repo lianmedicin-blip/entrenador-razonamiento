@@ -394,6 +394,18 @@ function showMetodo(t, first) {
   const ve = document.getElementById('ver-ej'); if (ve) ve.onclick = () => { ve.outerHTML = ejemploHtml(t); };
 }
 
+// ------------------------------------------------------------------ instalar como app
+let INSTALL = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTALL = e; if (VIEW === 'home') render(); });
+window.addEventListener('appinstalled', () => { INSTALL = null; S.installed = true; save(); if (VIEW === 'home') render(); });
+function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+function installCard() {
+  if (isStandalone() || S.installed || S.hideInstall) return '';
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  return `<div class="card note" style="display:flex;gap:12px;align-items:center"><img src="icons/icon-192.png" width="44" height="44" alt="" style="border-radius:12px">
+    <div style="flex:1"><b>Instálala como app</b><div class="muted small">${INSTALL ? 'Se abre desde tu pantalla de inicio, en pantalla completa y sin internet.' : ios ? 'En Safari: toca Compartir y luego «Agregar a inicio».' : 'En Chrome: menú ⋮ y luego «Instalar app» o «Agregar a pantalla principal».'}</div></div>
+    ${INSTALL ? '<button class="btn primary" id="install" style="flex:none;padding:10px 14px">Instalar</button>' : '<button class="link-btn" id="hide-inst">Ocultar</button>'}</div>`;
+}
 // ------------------------------------------------------------------ vistas
 let VIEW = 'home', TIMER = null, LAST = null;
 function go(v) { VIEW = v; if (TIMER) { clearInterval(TIMER); TIMER = null; } render(); window.scrollTo(0, 0); }
@@ -431,6 +443,7 @@ function renderHome() {
       <div class="stats"><span class="pill">Hoy: ${Math.min(doneToday, 999)}/${S.daily} preguntas</span><span class="pill">🔥 Racha: ${streak} día${streak === 1 ? '' : 's'}</span></div>
     </section>
     ${resume}
+    ${installCard()}
     ${homeAvisos(dExam, doneToday)}
     <div class="grid2">
       <button class="card action main" id="practica"><span class="ico">${ICON.play}</span><div><b>Práctica de hoy</b><span>${S.daily} preguntas mezcladas, adaptadas a tu nivel · ~${Math.round(S.daily * 2.4)} min</span></div></button>
@@ -474,6 +487,8 @@ function renderHome() {
   const an = document.getElementById('ancla'); if (an) an.onclick = () => anclaDialog('A');
   const pr = document.getElementById('proto'); if (pr) pr.onclick = showProtocolo;
   const ex = document.getElementById('ext'); if (ex) ex.onclick = extDialog;
+  const ib = document.getElementById('install'); if (ib) ib.onclick = async () => { INSTALL.prompt(); const r = await INSTALL.userChoice; if (r.outcome === 'accepted') { S.installed = true; save(); } INSTALL = null; render(); };
+  const hi = document.getElementById('hide-inst'); if (hi) hi.onclick = () => { S.hideInstall = true; save(); render(); };
   const pr2 = document.getElementById('proto2'); if (pr2) pr2.onclick = showProtocolo;
   $app.querySelectorAll('[data-tipo]').forEach(b => b.onclick = () => start('tipo', { tipo: b.dataset.tipo }));
 }

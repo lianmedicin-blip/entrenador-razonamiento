@@ -41,7 +41,7 @@ body {
   font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased;
 }
 button { font: inherit; color: inherit; }
-.app { max-width: 720px; margin: 0 auto; padding: 16px 16px 96px; min-height: 100vh; }
+.app { max-width: 720px; margin: 0 auto; padding: calc(16px + env(safe-area-inset-top)) 16px 96px; min-height: 100vh; }
 
 /* ---------- barra superior */
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 18px; }
