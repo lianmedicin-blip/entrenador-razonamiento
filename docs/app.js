@@ -1042,7 +1042,7 @@ function renderSettings() {
     <div class="card">${cuentaHtml()}</div>
     <h2 class="section">Tu progreso</h2>
     <div class="card">
-      <p class="muted small" style="margin-top:0">Todo se guarda solo en este navegador. Descarga una copia para no perderla o para pasarla a otro dispositivo.</p>
+      <p class="muted small" style="margin-top:0">${USER ? 'Tu progreso se guarda en este dispositivo y en la nube (tu cuenta). La copia descargable es un respaldo extra.' : 'Sin iniciar sesión, todo se guarda solo en este dispositivo. Descarga una copia para no perderla o para pasarla a otro dispositivo.'}</p>
       <div class="row-actions"><button class="chip" id="exp">⬇ Descargar copia</button><label class="chip">⬆ Cargar copia<input type="file" id="imp" accept="application/json" hidden></label><button class="chip" id="reset">Borrar todo</button></div>
     </div>
     <h2 class="section">Cómo funciona</h2>
