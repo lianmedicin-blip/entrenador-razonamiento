@@ -42,12 +42,18 @@ def figura(rng, N, n, colores):
                 s.add((r + dr, c + dc))
         cells = norm([(r, c, rng.choice(colores)) for r, c in s])
         R = rots(cells, N)
-        if len(set(R)) < 4: continue
-        mir = refl_v(cells, N)
-        if mir in R: continue          # no debe ser simétrica
-        if refl_h(cells, N) in R: continue
+        if len({forma(x) for x in R}) < 4: continue
+        FR = {forma(x) for x in R}
+        if forma(refl_v(cells, N)) in FR: continue   # ni siquiera la forma puede ser simétrica
+        if forma(refl_h(cells, N)) in FR: continue
         return cells
     raise Fallo('figura')
+
+def forma(cells):
+    return tuple(sorted((r, c) for r, c, _ in cells))
+
+def formas_rot(cells, N):
+    return {forma(x) for x in rots(cells, N)}
 
 def mover_una(cells, N, rng):
     cells = list(cells)
@@ -111,16 +117,19 @@ def gen_giro2d(nivel, rng):
     R = rots(fig, N)
     g = rng.choice([1, 2, 3]) if nivel != 'F' else rng.choice([1, 3])
     corr = R[g]
+    FR = formas_rot(fig, N)
     mir = refl_v(fig, N)
     MR = rots(mir, N)
-    ds = [m for m in MR if m not in R]
+    ds = [m for m in MR if forma(m) not in FR]
     rng.shuffle(ds)
     ds = ds[:3]
-    extra = mover_una(corr, N, rng) if nivel in ('F', 'M') else (cambiar_color(corr, rng) if 2 in cols else mover_una(corr, N, rng))
-    if extra in R or extra in ds: extra = mover_una(corr, N, rng)
-    if extra in R or extra in ds: raise Fallo('extra')
+    for _ in range(20):
+        extra = mover_una(corr, N, rng)
+        if forma(extra) not in FR and forma(extra) not in {forma(d) for d in ds}: break
+    else:
+        raise Fallo('extra')
     ds.append(extra)
-    if len(set(ds + [corr])) != 5: raise Fallo('dup')
+    if len({forma(x) for x in ds + [corr]}) != 5: raise Fallo('dup')
     rng.shuffle(ds)
     grados = {1: '90° a la derecha', 2: '180°', 3: '90° a la izquierda'}[g]
     q = "¿Cuál opción es la MISMA figura, solo girada (sin darle la vuelta como en un espejo)?"
@@ -133,21 +142,21 @@ def gen_giro2d(nivel, rng):
 
 # ------------------------------------------------------------------ papel doblado y perforado
 def gen_papel(nivel, rng):
-    N = 4
     if nivel == 'F':
-        folds = [rng.choice(['v', 'h'])]; nh = 1
+        N = rng.choice([4, 6]); fs = [rng.choice(['v', 'h'])]; nh = 1
     elif nivel == 'M':
-        folds = [rng.choice(['v', 'h'])]; nh = 2
+        N = rng.choice([4, 6]); fs = [rng.choice(['v', 'h'])]; nh = 2
     elif nivel == 'D':
-        folds = rng.sample(['v', 'h'], 2); nh = 1
+        N = 4; fs = rng.sample(['v', 'h'], 2); nh = 1
     else:
-        folds = rng.sample(['v', 'h'], 2); nh = 2
-    # región que queda doblada: v = la mitad derecha queda arriba (izquierda se dobla sobre la derecha)
+        N = 4; fs = rng.sample(['v', 'h'], 2); nh = 2
+    # sentido del doblez: '+' = se dobla la primera mitad (izquierda/arriba) sobre la segunda; '-' = al revés
+    folds = [f + rng.choice('+-') for f in fs]
     rows = list(range(N)); cols = list(range(N))
     steps = [{'r0': 0, 'c0': 0, 'h': N, 'w': N, 'fold': folds[0], 'holes': []}]
     for i, f in enumerate(folds):
-        if f == 'v': cols = cols[len(cols) // 2:]
-        else: rows = rows[len(rows) // 2:]
+        if f[0] == 'v': cols = cols[len(cols) // 2:] if f[1] == '+' else cols[:len(cols) // 2]
+        else: rows = rows[len(rows) // 2:] if f[1] == '+' else rows[:len(rows) // 2]
         steps.append({'r0': rows[0], 'c0': cols[0], 'h': len(rows), 'w': len(cols), 'fold': folds[i + 1] if i + 1 < len(folds) else None, 'holes': []})
     holes = rng.sample([(r, c) for r in rows for c in cols], nh)
     steps[-1]['holes'] = [list(h) for h in holes]
@@ -156,14 +165,14 @@ def gen_papel(nivel, rng):
         for f in reversed(fs):
             nuevo = set(out)
             for r, c in out:
-                nuevo.add((r, N - 1 - c) if f == 'v' else (N - 1 - r, c))
+                nuevo.add((r, N - 1 - c) if f[0] == 'v' else (N - 1 - r, c))
             out = nuevo
         return out
     corr = desdoblar(holes, folds)
     cands = [(set(holes), 'solo muestra las perforaciones sin desdoblar'),
-             (desdoblar(holes, folds[:-1]) if len(folds) > 1 else desdoblar(holes, ['h' if folds[0] == 'v' else 'v']),
+             (desdoblar(holes, folds[:-1]) if len(folds) > 1 else desdoblar(holes, ['h' if folds[0][0] == 'v' else 'v']),
               'desdobla solo una vez' if len(folds) > 1 else 'refleja hacia el lado equivocado'),
-             (desdoblar(holes, ['h' if f == 'v' else 'v' for f in folds]), 'refleja con los ejes cambiados'),
+             (desdoblar(holes, ['h' if f[0] == 'v' else 'v' for f in folds]), 'refleja con los ejes cambiados'),
              (corr - {sorted(corr)[0]}, 'le falta una perforación'),
              (corr | {rng.choice([(r, c) for r in range(N) for c in range(N) if (r, c) not in corr])}, 'tiene una perforación de más'),
              (desdoblar([(r, (c + 1) % N if c + 1 < N else c - 1) for r, c in holes], folds), 'las perforaciones están corridas una casilla')]

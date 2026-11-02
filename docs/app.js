@@ -308,15 +308,18 @@ function papelSvg(st, N) {
     const x0 = i * W;
     b += `<rect x="${x0 + 1}" y="1" width="98" height="98" fill="none" stroke="#bbb" stroke-dasharray="3 3"/>`;
     b += `<rect x="${x0 + p.c0 * L + 1}" y="${p.r0 * L + 1}" width="${p.w * L - 2}" height="${p.h * L - 2}" fill="#fff" stroke="#111" stroke-width="1.6"/>`;
+    for (let k = 1; k < p.w; k++) b += `<line x1="${x0 + (p.c0 + k) * L}" x2="${x0 + (p.c0 + k) * L}" y1="${p.r0 * L + 2}" y2="${(p.r0 + p.h) * L - 2}" stroke="#e6e6e6"/>`;
+    for (let k = 1; k < p.h; k++) b += `<line y1="${(p.r0 + k) * L}" y2="${(p.r0 + k) * L}" x1="${x0 + p.c0 * L + 2}" x2="${x0 + (p.c0 + p.w) * L - 2}" stroke="#e6e6e6"/>`;
+    const dir = p.fold ? (p.fold[1] === '-' ? -1 : 1) : 1;
     p.holes.forEach(([r, c]) => { b += `<circle cx="${x0 + c * L + L / 2}" cy="${r * L + L / 2}" r="${L * 0.28}" fill="#111"/>`; });
-    if (p.fold === 'v') {
-      const fx = x0 + (p.c0 + p.w / 2) * L, my = (p.r0 + p.h / 2) * L;
+    if (p.fold && p.fold[0] === 'v') {
+      const fx = x0 + (p.c0 + p.w / 2) * L, my = (p.r0 + p.h / 2) * L, a = dir * p.w * L / 4;
       b += `<line x1="${fx}" x2="${fx}" y1="${p.r0 * L + 2}" y2="${(p.r0 + p.h) * L - 2}" stroke="#4338ca" stroke-width="2" stroke-dasharray="5 4"/>`;
-      b += `<path d="M${fx - p.w * L / 4} ${my} Q ${fx} ${my - 18} ${fx + p.w * L / 4} ${my}" fill="none" stroke="#4338ca" stroke-width="2.4"/><path d="M${fx + p.w * L / 4 - 7} ${my - 6} L${fx + p.w * L / 4} ${my} L${fx + p.w * L / 4 - 8} ${my + 3}" fill="none" stroke="#4338ca" stroke-width="2.4"/>`;
-    } else if (p.fold === 'h') {
-      const fy = (p.r0 + p.h / 2) * L, mx = x0 + (p.c0 + p.w / 2) * L;
+      b += `<path d="M${fx - a} ${my} Q ${fx} ${my - 18} ${fx + a} ${my}" fill="none" stroke="#4338ca" stroke-width="2.4"/><path d="M${fx + a - 7 * dir} ${my - 6} L${fx + a} ${my} L${fx + a - 8 * dir} ${my + 3}" fill="none" stroke="#4338ca" stroke-width="2.4"/>`;
+    } else if (p.fold && p.fold[0] === 'h') {
+      const fy = (p.r0 + p.h / 2) * L, mx = x0 + (p.c0 + p.w / 2) * L, a = dir * p.h * L / 4;
       b += `<line y1="${fy}" y2="${fy}" x1="${x0 + p.c0 * L + 2}" x2="${x0 + (p.c0 + p.w) * L - 2}" stroke="#4338ca" stroke-width="2" stroke-dasharray="5 4"/>`;
-      b += `<path d="M${mx} ${fy - p.h * L / 4} Q ${mx + 18} ${fy} ${mx} ${fy + p.h * L / 4}" fill="none" stroke="#4338ca" stroke-width="2.4"/><path d="M${mx - 6} ${fy + p.h * L / 4 - 7} L${mx} ${fy + p.h * L / 4} L${mx + 3} ${fy + p.h * L / 4 - 8}" fill="none" stroke="#4338ca" stroke-width="2.4"/>`;
+      b += `<path d="M${mx} ${fy - a} Q ${mx + 18} ${fy} ${mx} ${fy + a}" fill="none" stroke="#4338ca" stroke-width="2.4"/><path d="M${mx - 6} ${fy + a - 7 * dir} L${mx} ${fy + a} L${mx + 3} ${fy + a - 8 * dir}" fill="none" stroke="#4338ca" stroke-width="2.4"/>`;
     }
     b += `<text x="${x0 + 50}" y="116" text-anchor="middle" font-size="11" font-weight="700" fill="#999">${i < st.length - 1 ? 'Paso ' + (i + 1) : 'Perforado'}</text>`;
   });
@@ -446,7 +449,14 @@ function renderHome() {
     <div class="row-actions" style="margin-top:18px"><button class="chip" id="proto2">📋 Protocolo del día del examen</button></div>
     <p class="muted small" style="margin-top:14px">Tu progreso se guarda en este dispositivo. Para no perderlo, descarga una copia desde Ajustes de vez en cuando.</p>`;
   bindGo();
-  const start = async (mode, opts) => {
+  const start = async (mode, opts, ok) => {
+    if (!ok && CUR && CUR.items && CUR.items.some(x => x.ans !== null)) {
+      openModal(`<h3>Tienes una sesión a medias</h3><p class="muted">Si empiezas otra, se pierde la que llevas (${CUR.items.filter(x => x.ans !== null).length} de ${CUR.items.length} respondidas).</p><div class="row-actions"><button class="btn primary" id="keep">Continuar la que llevo</button><button class="btn" id="discard">Empezar la nueva</button></div>`);
+      $modal.querySelector('[data-close]').textContent = 'Cancelar';
+      document.getElementById('keep').onclick = () => { closeModal(); go('quiz'); };
+      document.getElementById('discard').onclick = () => { closeModal(); start(mode, opts, true); };
+      return;
+    }
     $app.innerHTML = '<div class="spinner"></div>';
     const s = await buildSession(mode, opts);
     if (!s) { openModal('<h3>No hay repasos pendientes</h3><p class="muted">Cuando falles una pregunta, aquí aparecerán preguntas nuevas sobre esa misma regla al día siguiente, a los 3 días y a los 7 días.</p>'); return go('home'); }
@@ -552,6 +562,28 @@ const CAUSAS = { regla: 'No conocía la regla', paso: 'Me equivoqué en un paso'
 function causeHtml(q) {
   return `<div class="cause"><p class="small" style="margin:0 0 6px"><b>¿Por qué fallaste?</b> Explicártelo ayuda a no repetirlo.</p><div class="row-actions" style="margin:0">${Object.entries(CAUSAS).map(([k, v]) => `<button class="chip${q.cause === k ? ' on' : ''}" data-cause="${k}">${v}</button>`).join('')}</div></div>`;
 }
+function hintText(q) {
+  const it = q.it, x = it.x || {}, t = q.t;
+  const num = v => +v;
+  try {
+    if (t === 'serie_num') { const v = x.seq.filter(a => a !== '?').map(num); return 'Las diferencias entre números seguidos son: ' + v.slice(1).map((a, i) => (a - v[i] >= 0 ? '+' : '') + (a - v[i])).join(', ') + '. ¿Qué patrón siguen?'; }
+    if (t === 'serie_letras') {
+      const A = it.q.includes('SIN Ñ') ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' : 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ';
+      return 'Pasa las letras a números: ' + x.seq.filter(a => a !== '?').map(w => w.split('').map(ch => ch + (A.indexOf(ch) + 1)).join('')).join(', ') + '. Ahora busca el patrón.';
+    }
+    if (t === 'numeros_figura') { const f = (x.grid || x.tri)[0]; return `Mira la primera ${x.grid ? 'fila' : 'figura'}: ${f[0]} y ${f[1]} dan ${f[2]}. ¿Qué operación (suma, resta, producto, cuadrado…) lo logra? Compruébala en la segunda.`; }
+    if (t === 'simbolos') return 'Empieza por esta igualdad: «' + x.lines[x.lines.length > 1 && /=\s*\d+$/.test(x.lines[0]) ? 0 : 0] + '». Despeja ese símbolo y reemplázalo en las demás.';
+    if (t === 'operador') { const m = it.q.match(/(\d+)\s*\S\s*(\d+)/); return m ? `Copia la definición y reemplaza a = ${m[1]} y b = ${m[2]} (en ese orden). Si hay paréntesis, resuélvelos primero.` : 'Reemplaza a y b por los números en ese orden.'; }
+    if (t === 'algoritmo') return `Haz una tabla con una columna por variable. Empieza con: ${x.code.filter(l => /^[a-z]\s*←\s*-?\d+$/.test(l)).join(', ')}. Luego ejecuta línea por línea.`;
+    if (t === 'codificacion') { const m = it.q.match(/Si (\S+) se escribe (\S+),/); return m ? `Compara la primera letra: ${m[1][0]} → ${m[2][0]}. ¿Cuántas posiciones se movió? ¿Pasa lo mismo con la segunda (${m[1][1]} → ${m[2][1]})?` : ''; }
+    if (t === 'verdad_mentira') { const n0 = x.lines[0].split(':')[0]; return `Supón que ${n0} dice la verdad. Si su frase es cierta, ¿qué sabes de los demás? Si llegas a una contradicción, entonces ${n0} miente.`; }
+    if (t === 'tabla_logica') { const neg = x.lines.find(l => / no /.test(l)) || x.lines[0]; return `Haz una tabla (personas × opciones). Empieza marcando ✗ con: «${neg}»`; }
+    if (t === 'ordenamiento') return `Dibuja una fila vertical (arriba el más alto). Empieza con «${x.lines[0]}» y ve agregando a los demás pista por pista.`;
+    if (t === 'silogismo') return it.e[0];
+    if (t === 'condicional') return 'Escribe la regla como «si P → Q». Ahora mira el dato: ¿afirma P, niega Q, afirma Q o niega P? Solo afirmar P o negar Q permiten concluir algo.';
+  } catch (err) {}
+  return METODO[t] ? METODO[t][0] + ' ' + (METODO[t][1] || '') : '';
+}
 function feedbackHtml(q) {
   const corrPos = q.order.indexOf(0);
   const f = !q.ok && q.ans !== null && q.it.f ? falloTxt(q.t, q.it.f[q.order[q.ans]]) : '';
@@ -583,7 +615,7 @@ function renderQuiz() {
     <div class="qmeta"><span>${sim ? `Pregunta ${CUR.i + 1}` : `${TIPOS[q.t].n} · ${NIV_TXT[NIV.indexOf(q.it.n)]}`}</span>${sim ? '' : `<button class="link-btn" id="how">¿Cómo se resuelve?</button>`}</div>
     <div id="pace" class="pace"></div>
     ${qBlock(q)}
-    ${!sim && !fb && lvlOf(q.t) <= 1 && q.it.e.length >= 2 ? (q.hint ? `<div class="why small"><p><b>💡 Primer paso:</b> ${esc(q.it.e[0])}</p><p class="muted">Ahora termina tú.</p></div>` : `<button class="link-btn" id="hint" style="margin:-4px 0 10px">💡 Ver el primer paso</button>`) : ''}
+    ${!sim && !fb && lvlOf(q.t) <= 1 ? (q.hint ? `<div class="why small"><p><b>💡 Primer paso:</b> ${esc(hintText(q))}</p><p class="muted">Ahora termina tú.</p></div>` : `<button class="link-btn" id="hint" style="margin:-4px 0 10px">💡 Ver el primer paso</button>`) : ''}
     ${!sim && !fb && S.thinkFirst !== false && !q.revealed && q.t !== 'intrusa' ? `<div class="think"><p><b>Primero piensa tu respuesta</b> sin mirar las opciones: ¿qué regla ves y cómo debería ser lo que falta?</p><button class="btn primary" id="reveal">Ya la pensé · ver opciones</button></div>` : `<div class="options${fig ? ' fig' : ''}">${opts}</div>
     ${!sim && !fb ? `<div class="checkrow"><span class="muted small">Comprobar:</span><button class="btn" id="dudo" ${q.ans === null ? 'disabled' : ''}>Tengo dudas</button><button class="btn primary" id="next" ${q.ans === null ? 'disabled' : ''}>Estoy seguro</button></div>` : ''}`}
     ${fb ? `<div id="fb">${feedbackHtml(q)}${q.ok ? '' : causeHtml(q)}<div class="row-actions"><a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos de este tipo</a></div></div>` : ''}
@@ -786,7 +818,7 @@ function renderResults() {
         ${q.time ? `<span class="chip" style="cursor:default">⏱ ${fmtTime(q.time)}</span>` : ''}
       </div></details>`;
   }).join('');
-  const byT = Object.entries(s.items.reduce((m, q) => { (m[q.t] = m[q.t] || [0, 0])[1]++; if (q.ok) m[q.t][0]++; return m; }, {}))
+  const byT = Object.entries(s.items.filter(q => q.ans !== null).reduce((m, q) => { (m[q.t] = m[q.t] || [0, 0])[1]++; if (q.ok) m[q.t][0]++; return m; }, {}))
     .sort((a, b) => a[1][0] / a[1][1] - b[1][0] / b[1][1]).slice(0, 3);
   $app.innerHTML = topBar(true, 'Resultados') + `
     <div class="card"><div class="score">${ring(p)}<div><h1>${ok} de ${tot}</h1><p>${msg} · ${Math.round(s.elapsed / 60)} min</p>
@@ -801,7 +833,7 @@ function renderResults() {
     ${s.mode !== 'simulacro' ? planHtml() : ''}
     <div class="tabs"><button data-tab="mal" class="${RTAB === 'mal' ? 'on' : ''}">Mis errores (${tot - ok})</button><button data-tab="todas" class="${RTAB === 'todas' ? 'on' : ''}">Todas (${tot})</button></div>
     ${cards || '<div class="empty">¡Ningún error! 🎉</div>'}
-    <p class="muted small">Las preguntas que fallaste vuelven en versiones nuevas mañana, en 3 días y en 7 días. Si fallaste por leer rápido y no por no saber la regla, márcala como «descuido»: vuelve una sola vez y te recordamos leer con calma.</p>
+    <p class="muted small">${s.mode === 'simulacro' ? 'El simulacro no cambia tu nivel, pero tus errores también vuelven como repasos. ' : ''}Las preguntas que fallaste vuelven en versiones nuevas mañana, en 3 días y en 7 días. Si fallaste por leer rápido y no por no saber la regla, márcala como «descuido»: vuelve una sola vez y te recordamos leer con calma.</p>
     <div class="navbar"><div class="in"><button class="btn primary" data-go="home">Volver al inicio</button></div></div>`;
   bindGo();
   $app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { RTAB = b.dataset.tab; renderResults(); });
