@@ -91,7 +91,15 @@ function save(fromSync) {
 }
 
 // ------------------------------------------------------------------ sincronización (Firebase: inicio de sesión + Firestore)
-const FIREBASE_CONFIG = null; // se completa con los datos del proyecto de Firebase
+// Datos públicos del proyecto (no son secretos: lo que protege el progreso son las reglas de Firestore)
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyCHRyUMtex9qZH09m9rv6ByVXSmFSpXGUQ',
+  authDomain: 'entrenador-de-razonamiento.firebaseapp.com',
+  projectId: 'entrenador-de-razonamiento',
+  storageBucket: 'entrenador-de-razonamiento.firebasestorage.app',
+  messagingSenderId: '125476215340',
+  appId: '1:125476215340:web:674298df5224ca7515cf89',
+};
 let FB = null, USER = null, PUSH_T = null, LAST_SYNC = null, SYNC_ERR = '';
 function initSync() {
   if (!FIREBASE_CONFIG || typeof firebase === 'undefined') return;
