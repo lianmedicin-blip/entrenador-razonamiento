@@ -1180,11 +1180,14 @@ function tutorRender() {
   log.scrollTop = log.scrollHeight;
 }
 function tutorError(e) {
-  const m = String((e && (e.message || e.code)) || e);
-  if (/api-not-enabled|not been used|disabled|PERMISSION_DENIED|403/i.test(m)) return 'El tutor todavía no está activado en Firebase (AI Logic → Gemini Developer API). Si ya lo activaste, espera unos minutos y vuelve a intentar.';
+  const cd = (e && e.customData) || {};
+  const m = [e && e.message, e && e.code, cd.status, cd.statusText, cd.errorDetails && JSON.stringify(cd.errorDetails)].filter(Boolean).join(' | ') || String(e);
+  try { console.error('Tutor', e, cd); } catch (x) {}
+  if (/API_KEY_SERVICE_BLOCKED|are blocked/i.test(m)) return 'La clave de la app no tiene permiso para usar la IA (hay que habilitarla en Google Cloud). Detalle: ' + m.slice(0, 600);
+  if (/api-not-enabled|not been used|SERVICE_DISABLED|disabled/i.test(m)) return 'La IA todavía no está activada en el proyecto (o se está activando: espera unos minutos). Detalle: ' + m.slice(0, 600);
   if (/quota|429|RESOURCE_EXHAUSTED/i.test(m)) return 'Se acabó el uso gratuito del tutor por ahora. Vuelve a intentar en un rato.';
   if (/Failed to fetch|NetworkError|network/i.test(m)) return 'Sin conexión a internet.';
-  return 'No pude responder: ' + m.slice(0, 160);
+  return 'No pude responder. Detalle: ' + m.slice(0, 700);
 }
 async function tutorEnviar(texto) {
   if (TUT_BUSY) return;
