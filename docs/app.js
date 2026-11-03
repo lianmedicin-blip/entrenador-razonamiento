@@ -546,6 +546,7 @@ function topBar(back = false, title = '') {
 }
 function bindGo() { $app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go)); }
 
+let START = null;
 function renderHome() {
   const today = hoy();
   const dExam = diffDays(today, S.exam);
@@ -556,7 +557,8 @@ function renderHome() {
   const resume = CUR && CUR.items ? `<button class="card action main" id="resume" style="margin-top:14px;border-color:var(--primary)"><span class="ico">${ICON.play}</span><div><b>Continuar ${CUR.mode === 'simulacro' ? 'el simulacro (el reloj sigue corriendo)' : 'donde ibas'}</b><span>${CUR.items.filter(x => x.ans !== null).length} de ${CUR.items.length} respondidas</span></div></button>` : '';
   const types = Object.entries(TIPOS).map(([t, info]) => {
     const a = accOf(t);
-    return `<button class="type" data-tipo="${t}"><span class="lvl">${NIV_TXT[lvlOf(t)]}</span><b>${info.n}</b><div class="bar"><i style="width:${a === null ? 0 : Math.round(a * 100)}%"></i></div><small>${a === null ? 'Sin practicar' : Math.round(a * 100) + '% de acierto'}</small></button>`;
+    const hc = [0, 1, 2, 3].filter(L => cursoDe(t)[L]).length;
+    return `<button class="type" data-tipo="${t}"><span class="lvl">${NIV_TXT[lvlOf(t)]}</span>${hc ? `<span class="lvl" style="margin-left:4px">📚 ${hc}/4</span>` : ''}<b>${info.n}</b><div class="bar"><i style="width:${a === null ? 0 : Math.round(a * 100)}%"></i></div><small>${a === null ? 'Sin practicar' : Math.round(a * 100) + '% de acierto'}</small></button>`;
   }).join('');
   const anclaA = S.anchors.find(a => a.k === 'A');
   $app.innerHTML = topBar() + `
@@ -574,7 +576,6 @@ function renderHome() {
       <button class="card action main" id="practica"><span class="ico">${ICON.play}</span><div><b>${doneToday ? 'Siguiente bloque' : 'Práctica de hoy'}</b><span>Bloque de ${S.daily} preguntas mezcladas, adaptadas a tu nivel · ~${Math.round(S.daily * 2.4)} min</span></div></button>
       <button class="card action" id="repaso"><span class="ico">${ICON.redo}</span><b>Repasar errores${due ? `<span class="badge">${due}</span>` : ''}</b><span>${due ? 'Preguntas nuevas sobre lo que fallaste' : 'No tienes repasos pendientes hoy'}</span></button>
       <button class="card action" id="simulacro"><span class="ico">${ICON.clock}</span><b>Simulacro</b><span>Completo (50 · 2 h) o corto (25 · 1 h), como el examen</span></button>
-      <button class="card action" data-go="cursos"><span class="ico">📚</span><b>Cursos</b><span>Aprende cada tipo: explicación y ejercicios con el tutor</span></button>
     </div>
     ${!anclaA ? `<div class="card" style="margin-top:12px"><b>${ICON.flag} Prueba ancla A (una sola vez)</b><p class="muted small" style="margin:6px 0 10px">Mide tu punto de partida con preguntas hechas por personas: descarga el <a href="${ANCLA_URL}" target="_blank" rel="noopener">PDF de 50 preguntas de RedOpositor</a>, haz solo las preguntas 1 a 25 en 60 minutos y anota aquí cuántas acertaste. Las 26 a 50 guárdalas para la prueba B, unos días antes del examen.</p><button class="chip" id="ancla">Anotar mi puntaje</button></div>` : ''}
     <div class="card" style="margin-top:12px"><b>👥 Practica también con preguntas hechas por personas</b>
@@ -583,12 +584,12 @@ function renderHome() {
         <a class="chip" href="https://www.preparaoposiciones.com/blog/test-gratis/psicotecnicos/" target="_blank" rel="noopener">PreparaOposiciones (español)</a>
         <a class="chip" href="https://www.practiceaptitudetests.com/abstract-reasoning-tests/" target="_blank" rel="noopener">Practice Aptitude Tests (inglés)</a>
         <button class="chip" id="ext">✍ Anotar un test externo</button></div></div>
-    <h2 class="section">Practicar un tipo</h2>
+    <h2 class="section">Tipos de pregunta</h2><p class="muted small" style="margin:-6px 0 10px">Toca uno para aprenderlo (curso con el tutor) o practicarlo.</p>
     <div class="types">${types}</div>
     <div class="row-actions" style="margin-top:18px"><button class="chip" id="proto2">📋 Protocolo del día del examen</button></div>
     <p class="muted small" style="margin-top:14px">Tu progreso se guarda en este dispositivo. Para no perderlo, descarga una copia desde Ajustes de vez en cuando.</p>`;
   bindGo();
-  const start = async (mode, opts, ok) => {
+  const start = START = async (mode, opts, ok) => {
     if (!ok && CUR && CUR.items && CUR.items.some(x => x.ans !== null)) {
       openModal(`<h3>Tienes una sesión a medias</h3><p class="muted">Si empiezas otra, se pierde la que llevas (${CUR.items.filter(x => x.ans !== null).length} de ${CUR.items.length} respondidas).</p><div class="row-actions"><button class="btn primary" id="keep">Continuar la que llevo</button><button class="btn" id="discard">Empezar la nueva</button></div>`);
       $modal.querySelector('[data-close]').textContent = 'Cancelar';
@@ -616,7 +617,7 @@ function renderHome() {
   const ib = document.getElementById('install'); if (ib) ib.onclick = async () => { INSTALL.prompt(); const r = await INSTALL.userChoice; if (r.outcome === 'accepted') { S.installed = true; save(); } INSTALL = null; render(); };
   const hi = document.getElementById('hide-inst'); if (hi) hi.onclick = () => { S.hideInstall = true; save(); render(); };
   const pr2 = document.getElementById('proto2'); if (pr2) pr2.onclick = showProtocolo;
-  $app.querySelectorAll('[data-tipo]').forEach(b => b.onclick = () => start('tipo', { tipo: b.dataset.tipo }));
+  $app.querySelectorAll('[data-tipo]').forEach(b => b.onclick = () => { CURSO_T = b.dataset.tipo; go('curso'); });
 }
 function homeAvisos(dExam, doneToday) {
   let h = '';
@@ -1068,7 +1069,7 @@ function renderSettings() {
       <p><b>Corrige al instante y te pregunta por qué fallaste.</b> Explicarte el error y revisar con calma los errores que cometiste estando seguro ayuda a no repetirlos.</p>
       <p><b>Ejemplos resueltos al empezar.</b> En los primeros niveles te muestra un ejemplo resuelto paso a paso; al subir de nivel deja de mostrarlos, porque ya estorban.</p>
       <p><b>Preguntas comprobadas.</b> Las de figuras y las de lógica se comprueban por código para que solo una opción sea correcta; en las numéricas la respuesta se calcula. Las analogías verbales están escritas a mano. Si ves una pregunta que crees mal hecha, avísale a quien te ayuda a mantener la app.</p>
-      <p class="muted small">Versión de la app: 2026-11-03 · cursos 3</p>
+      <p class="muted small">Versión de la app: 2026-11-03 · cursos 4</p>
       <p style="margin-bottom:0" class="muted">Código abierto: <a href="https://github.com/lianmedicin-blip/entrenador-razonamiento" target="_blank" rel="noopener">github.com/lianmedicin-blip/entrenador-razonamiento</a></p>
     </div>`;
   bindGo();
@@ -1435,20 +1436,22 @@ const XP_EJ = 100;
 const xpCurso = t => [0, 1, 2, 3].reduce((a, L) => a + ((cursoDe(t)[L] || {}).xp || 0), 0);
 const xpTotal = () => Object.keys(S.cursos || {}).reduce((a, t) => a + xpCurso(t), 0);
 function renderCurso() {
-  const t = CURSO_T; if (!t || !TIPOS[t]) return go('cursos');
+  const t = CURSO_T; if (!t || !TIPOS[t]) return go('home');
   const c = cursoDe(t), hechas = [0, 1, 2, 3].filter(L => c[L]).length, sig = [0, 1, 2, 3].find(L => !c[L]);
   const desc = { 0: 'Las reglas más simples, con ejemplo resuelto.', 1: 'Reglas un poco más elaboradas o combinadas.', 2: 'Reglas menos obvias y más pasos.', 3: 'Lo más difícil de este tipo en la app.' };
-  $app.innerHTML = `<div class="top"><button class="icon-btn" data-go="cursos">${ICON.back} Cursos</button><span class="pill">⚡ ${xpCurso(t)} XP</span></div>
-    <div class="card course-head"><p class="lvl">Curso</p><h1 style="margin:4px 0 6px">${TIPOS[t].n}</h1>
+  $app.innerHTML = `<div class="top"><button class="icon-btn" data-go="home">${ICON.back} Inicio</button><span class="pill">⚡ ${xpCurso(t)} XP</span></div>
+    <div class="card course-head"><p class="lvl">${NIV_TXT[lvlOf(t)]} en la práctica${accOf(t) !== null ? ` · ${Math.round(accOf(t) * 100)}% de acierto` : ''}</p><h1 style="margin:4px 0 6px">${TIPOS[t].n}</h1>
       <p class="muted small" style="margin:0 0 10px">4 lecciones · ${LEC_N} ejercicios cada una · hasta ${4 * LEC_N * XP_EJ} XP</p>
       <div class="progress"><i style="width:${hechas * 25}%"></i></div><p class="muted small" style="margin:6px 0 12px">${hechas * 25}% completado</p>
-      <button class="btn primary" id="cont" style="width:100%">${hechas === 4 ? 'Repasar la lección 4' : hechas ? `Continuar curso · Lección ${sig + 1}` : 'Empezar curso'}</button></div>
+      <div class="row-actions" style="margin:0"><button class="btn primary" id="cont" style="flex:1">📚 ${hechas === 4 ? 'Repasar la lección 4' : hechas ? `Continuar curso · Lección ${sig + 1}` : 'Aprender (curso)'}</button><button class="btn" id="prac" style="flex:1">▶ Practicar este tipo</button></div>
+      <p class="muted small" style="margin:8px 0 0"><b>Aprender:</b> explicación + ejercicios con el tutor. <b>Practicar:</b> preguntas que se adaptan a tu nivel, sin explicación previa.</p></div>
     <div class="chapters">${[0, 1, 2, 3].map(L => `<button class="chapter${L === sig ? ' next' : ''}${c[L] ? ' done' : ''}" data-lec="${L}">
       <span class="lec-n">${c[L] ? '✓' : L + 1}</span>
       <span class="ch-body"><b>Lección ${L + 1} · ${LEC_NOM[L]}</b><small>${desc[L]}</small>
       <small class="ch-meta">${c[L] ? `Mejor resultado: ${c[L].ok}/${c[L].n} al primer intento · ${c[L].xp || 0} XP` : `Explicación · ejemplo resuelto · ${LEC_N} ejercicios · ~10 min`}</small></span></button>`).join('')}</div>`;
   bindGo();
   document.getElementById('cont').onclick = () => empezarLeccion(t, hechas === 4 ? 3 : sig);
+  document.getElementById('prac').onclick = () => { if (START) START('tipo', { tipo: t }); else { go('home'); START('tipo', { tipo: t }); } };
   $app.querySelectorAll('[data-lec]').forEach(b => b.onclick = () => empezarLeccion(t, +b.dataset.lec));
 }
 async function empezarLeccion(t, L) {
@@ -1485,7 +1488,7 @@ function lecSlides() {
   return sl;
 }
 function renderLeccion() {
-  if (!LEC) return go('cursos');
+  if (!LEC) return go('home');
   if (LEC.timer) { clearTimeout(LEC.timer); LEC.timer = null; }
   const { t, L } = LEC;
   const salir = `<button class="icon-btn" id="lec-exit">${ICON.back} Curso</button>`;
@@ -1560,7 +1563,7 @@ function renderLeccion() {
       <div class="card"><div class="score">${ring(ok / n)}<div><h1>${ok} de ${n}</h1><p>al primer intento · Lección ${L + 1} de ${TIPOS[t].n}</p></div></div></div>
       <div class="card"><div class="kv"><span><b>XP ganados</b></span><span><b>⚡ ${LEC.items.reduce((a, q) => a + xpDe(q), 0)} de ${n * XP_EJ}</b></span></div>${LEC.items.map((q, j) => `<div class="kv"><span>${q.primera ? '✓' : q.ok ? '↻' : '✗'} Ejercicio ${j + 1} <span class="muted small">· ${esc(reglaTxt(t, q.it.r))}</span></span><span class="muted small">${q.primera ? 'al primer intento' : q.ok ? 'al segundo intento' : q.sol ? 'viste la solución' : 'fallado'} · ${xpDe(q)} XP</span></div>`).join('')}</div>
       <p class="muted small">${ok < n ? 'Los ejercicios que fallaste vuelven como repasos mañana, en 3 días y en 7 días. ' : ''}${ok >= 4 ? 'Vas bien: puedes pasar a la siguiente lección.' : 'Te recomiendo repetir la lección con ejercicios nuevos antes de seguir.'}</p>
-      <div class="navbar"><div class="in"><button class="btn ghost" id="lec-rep">Repetir</button><button class="btn ghost" id="lec-mapa">Curso</button>${L < 3 ? `<button class="btn primary" id="lec-next-l">Lección ${L + 2}</button>` : `<button class="btn primary" data-go="cursos">Ver cursos</button>`}</div></div>`;
+      <div class="navbar"><div class="in"><button class="btn ghost" id="lec-rep">Repetir</button><button class="btn ghost" id="lec-mapa">Curso</button>${L < 3 ? `<button class="btn primary" id="lec-next-l">Lección ${L + 2}</button>` : `<button class="btn primary" data-go="home">Inicio</button>`}</div></div>`;
     bindGo();
     document.getElementById('lec-rep').onclick = () => empezarLeccion(t, L);
     const nl = document.getElementById('lec-next-l'); if (nl) nl.onclick = () => empezarLeccion(t, L + 1);
