@@ -524,7 +524,7 @@ function installCard() {
 }
 // ------------------------------------------------------------------ vistas
 let VIEW = 'home', TIMER = null, LAST = null;
-function go(v) { VIEW = v; if (TIMER) { clearInterval(TIMER); TIMER = null; } render(); window.scrollTo(0, 0); }
+function go(v) { VIEW = v; if (TIMER) { clearInterval(TIMER); TIMER = null; } if (v !== 'quiz' && typeof tutorCerrar === 'function') tutorCerrar(); render(); window.scrollTo(0, 0); }
 function render() {
   if (VIEW === 'home') return renderHome();
   if (VIEW === 'quiz') return renderQuiz();
@@ -749,9 +749,10 @@ function renderQuiz() {
     <div id="pace" class="pace"></div>
     ${qBlock(q)}
     ${!sim && !fb && lvlOf(q.t) <= 1 ? (q.hint ? `<div class="why small"><p><b>💡 Primer paso:</b> ${esc(hintText(q))}</p><p class="muted">Ahora termina tú.</p></div>` : `<button class="link-btn" id="hint" style="margin:-4px 0 10px">💡 Ver el primer paso</button>`) : ''}
+    ${!sim && !fb ? `<button class="link-btn" id="tut-hint" style="margin:-4px 0 10px">🤖 Pídele una pista al tutor</button>` : ''}
     ${!sim && !fb && S.thinkFirst !== false && !q.revealed && q.t !== 'intrusa' ? `<div class="think"><p><b>Primero piensa tu respuesta</b> sin mirar las opciones: ¿qué regla ves y cómo debería ser lo que falta?</p><button class="btn primary" id="reveal">Ya la pensé · ver opciones</button></div>` : `<div class="options${fig ? ' fig' : ''}">${opts}</div>
     ${!sim && !fb ? `<div class="checkrow"><span class="muted small">Comprobar:</span><button class="btn" id="dudo" ${q.ans === null ? 'disabled' : ''}>Tengo dudas</button><button class="btn primary" id="next" ${q.ans === null ? 'disabled' : ''}>Estoy seguro</button></div>` : ''}`}
-    ${fb ? `<div id="fb">${feedbackHtml(q)}${q.ok ? '' : causeHtml(q)}<div class="row-actions"><button class="chip tutor-chip" id="tut-open">🤖 Pregúntale al tutor</button><a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos de este tipo</a></div></div>` : ''}
+    ${fb ? `<div id="fb">${feedbackHtml(q)}${q.ok ? '' : causeHtml(q)}<div class="row-actions"><button class="chip tutor-chip" id="tut-open">🤖 ${q.ok ? '¿Por qué es la correcta?' : 'Explícame mi error'}</button><a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos de este tipo</a></div></div>` : ''}
     <div class="navbar"><div class="in">
       <button class="btn ghost" id="prev" ${CUR.i === 0 ? 'disabled style="opacity:.4"' : ''} aria-label="Anterior">${ICON.back}</button>
       ${fb ? '' : `<button class="btn ghost" id="skip">${q.ans === null ? 'Saltar' : 'Después'}</button>`}
@@ -760,7 +761,9 @@ function renderQuiz() {
   if (!fb) $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { q.ans = +b.dataset.pos; saveCur(); $app.querySelectorAll('.opt').forEach(o => o.classList.toggle('sel', +o.dataset.pos === q.ans)); const nb = document.getElementById('next'); if (nb) nb.disabled = false; const du = document.getElementById('dudo'); if (du) du.disabled = false; const sk = document.getElementById('skip'); if (sk) sk.textContent = 'Después'; });
   const nx = document.getElementById('next'); if (nx) nx.onclick = () => { if (!sim && !q.checked) q.conf = 'seguro'; next(); };
   const du = document.getElementById('dudo'); if (du) du.onclick = () => { q.conf = 'dudo'; next(); };
-  const to = document.getElementById('tut-open'); if (to) to.onclick = () => abrirTutor(q);
+  const to = document.getElementById('tut-open'); if (to) to.onclick = () => abrirTutor(q, q.ok ? '¿Por qué esta es la respuesta correcta? Explícamelo paso a paso.' : '¿Por qué me equivoqué? Explícamelo paso a paso, de forma sencilla.');
+  const th = document.getElementById('tut-hint'); if (th) th.onclick = () => abrirTutor(q, 'Dame una pista pequeña para empezar, sin decirme la respuesta.');
+  tutorSeguir(q);
   const hb = document.getElementById('hint'); if (hb) hb.onclick = () => { q.hint = true; saveCur(); renderQuiz(); };
   const rv = document.getElementById('reveal'); if (rv) rv.onclick = () => { q.revealed = true; saveCur(); renderQuiz(); };
   $app.querySelectorAll('[data-cause]').forEach(b => b.onclick = () => { q.cause = b.dataset.cause; saveCur(); $app.querySelectorAll('[data-cause]').forEach(o => o.classList.toggle('on', o.dataset.cause === q.cause)); });
@@ -946,7 +949,7 @@ function renderResults() {
       <div class="why">${q.ans === null ? '<p><b>La dejaste en blanco.</b></p>' : q.ok ? '' : `<p><b>Marcaste ${LETRAS[q.ans]}; la correcta es ${LETRAS[corrPos]}.</b> ${esc(f)}</p>`}${q.it.e.map(x => `<p>${esc(x)}</p>`).join('')}</div>
       ${k}
       <div class="row-actions">
-        <button class="chip tutor-chip" data-tut="${idx}">🤖 Tutor</button>
+        <button class="chip tutor-chip" data-tut="${idx}">🤖 Explícamela</button>
         <button class="chip" data-how="${q.t}">📘 Cómo se resuelve</button>
         <a class="chip" href="${ytLink(q.t)}" target="_blank" rel="noopener">▶ Videos</a>
         ${q.ok ? '' : `<button class="chip${isDesc ? ' on' : ''}" data-desc="${src}" data-t="${q.t}" data-r="${esc(q.revRegla || q.it.r)}">${isDesc ? '✓ Marcado como descuido' : 'Fue un descuido'}</button>`}
@@ -974,7 +977,7 @@ function renderResults() {
   $app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { RTAB = b.dataset.tab; renderResults(); });
   bindPlan();
   $app.querySelectorAll('[data-how]').forEach(b => b.onclick = () => showMetodo(b.dataset.how));
-  $app.querySelectorAll('[data-tut]').forEach(b => b.onclick = () => abrirTutor(s.items[+b.dataset.tut]));
+  $app.querySelectorAll('[data-tut]').forEach(b => b.onclick = () => { const q = s.items[+b.dataset.tut], ok = q.ans !== null && q.order[q.ans] === 0; abrirTutor(q, ok ? '¿Por qué esta es la respuesta correcta? Explícamelo paso a paso.' : q.ans === null ? 'La dejé en blanco. ¿Cómo se resolvía? Explícamelo paso a paso.' : '¿Por qué me equivoqué? Explícamelo paso a paso, de forma sencilla.'); });
   $app.querySelectorAll('[data-desc]').forEach(b => b.onclick = () => {
     const src = b.dataset.desc;
     const mine = S.rev.filter(r => r.src === src && !r.done);
@@ -1056,7 +1059,7 @@ function renderSettings() {
       <p><b>Corrige al instante y te pregunta por qué fallaste.</b> Explicarte el error y revisar con calma los errores que cometiste estando seguro ayuda a no repetirlos.</p>
       <p><b>Ejemplos resueltos al empezar.</b> En los primeros niveles te muestra un ejemplo resuelto paso a paso; al subir de nivel deja de mostrarlos, porque ya estorban.</p>
       <p><b>Preguntas comprobadas.</b> Las de figuras y las de lógica se comprueban por código para que solo una opción sea correcta; en las numéricas la respuesta se calcula. Las analogías verbales están escritas a mano. Si ves una pregunta que crees mal hecha, avísale a quien te ayuda a mantener la app.</p>
-      <p class="muted small">Versión de la app: 2026-11-03 · tutor 5</p>
+      <p class="muted small">Versión de la app: 2026-11-03 · tutor 6 (panel)</p>
       <p style="margin-bottom:0" class="muted">Código abierto: <a href="https://github.com/lianmedicin-blip/entrenador-razonamiento" target="_blank" rel="noopener">github.com/lianmedicin-blip/entrenador-razonamiento</a></p>
     </div>`;
   bindGo();
@@ -1093,43 +1096,58 @@ Reglas:
 - Si te pide practicar, inventa UNA pregunta parecida con 5 opciones y no des la respuesta hasta que él responda.
 - Nunca inventes datos. Si no estás seguro de algo, dilo. No hables de CI ni de coeficiente intelectual.
 - Si te pasa un enlace de YouTube que puedes ver, resume qué explica y da los minutos exactos (MM:SS) de las partes útiles. Si no puedes ver el video, dilo claramente.`;
-let TUTOR = null; // { ai, aiMod, name, model, searchModel }
-// Google retira modelos con el tiempo: si uno ya no está disponible, se pasa solo al siguiente.
-const TUT_MODELOS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
-let TUT_MI = 0; try { TUT_MI = Math.min(+localStorage.getItem('avz_tut_m') || 0, TUT_MODELOS.length - 1); } catch (e) {}
-async function tutorInit(idx = TUT_MI) {
+let TUTOR = null; // { ai, aiMod, cache: {nombre: {model, searchModel}} }
+// Google retira y satura modelos: se prueba en este orden. Si uno fue retirado, se salta para siempre.
+const TUT_MODELOS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
+const TUT_PIENSA = { 'gemini-3.8-flash': 'low' }; // pensar poco = responde más rápido
+let TUT_MI = 0; try { TUT_MI = Math.min(+localStorage.getItem('avz_tut_m2') || 0, TUT_MODELOS.length - 1); } catch (e) {}
+const TUT_SIN_PIENSA = {};
+async function tutorInit(idx) {
   if (!TUTOR) {
     const appMod = await import(`https://www.gstatic.com/firebasejs/${AI_VER}/firebase-app.js`);
     const aiMod = await import(`https://www.gstatic.com/firebasejs/${AI_VER}/firebase-ai.js`);
     const app = appMod.getApps().find(a => a.name === 'tutor') || appMod.initializeApp(FIREBASE_CONFIG, 'tutor');
-    TUTOR = { aiMod, ai: aiMod.getAI(app, { backend: new aiMod.GoogleAIBackend() }) };
+    TUTOR = { aiMod, ai: aiMod.getAI(app, { backend: new aiMod.GoogleAIBackend() }), cache: {} };
   }
-  const name = TUT_MODELOS[idx];
-  if (TUTOR.name !== name) {
-    TUTOR.name = name;
-    TUTOR.model = TUTOR.aiMod.getGenerativeModel(TUTOR.ai, { model: name, systemInstruction: TUTOR_SYS });
-    TUTOR.searchModel = TUTOR.aiMod.getGenerativeModel(TUTOR.ai, { model: name, systemInstruction: TUTOR_SYS, tools: [{ googleSearch: {} }] });
-    TUT_CHAT = null;
+  const name = TUT_MODELOS[idx], key = name + (TUT_SIN_PIENSA[name] ? '-np' : '');
+  if (!TUTOR.cache[key]) {
+    const gc = TUT_PIENSA[name] && !TUT_SIN_PIENSA[name] ? { generationConfig: { thinkingConfig: { thinkingLevel: TUT_PIENSA[name] } } } : {};
+    const ro = { timeout: 45000 };
+    TUTOR.cache[key] = {
+      name,
+      model: TUTOR.aiMod.getGenerativeModel(TUTOR.ai, { model: name, systemInstruction: TUTOR_SYS, ...gc }, ro),
+      searchModel: TUTOR.aiMod.getGenerativeModel(TUTOR.ai, { model: name, systemInstruction: TUTOR_SYS, tools: [{ googleSearch: {} }], ...gc }, ro),
+    };
   }
-  return TUTOR;
+  return TUTOR.cache[key];
 }
-function modeloNoDisponible(e) { return /\[404|no longer available|NOT_FOUND|is not found|not supported for/i.test((e && e.message) || ''); }
-function errorPasajero(e) { return /\[(500|503|429)|high demand|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test((e && e.message) || ''); }
-// Si el modelo fue retirado, pasa al siguiente para siempre. Si está saturado, reintenta 2 veces y luego prueba
-// los otros modelos solo para esta respuesta.
-async function conModelo(fn) {
+const errMsg = e => [(e && e.message) || '', e && e.customData && e.customData.status].join(' ');
+const modeloNoDisponible = e => /\[404|no longer available|NOT_FOUND|is not found|not supported for/i.test(errMsg(e));
+const errorPasajero = e => /\[(500|502|503|429)|high demand|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED|\b(500|503)\b/i.test(errMsg(e));
+const errorPiensa = e => /\[400/.test(errMsg(e)) && /thinking/i.test(errMsg(e));
+const esTiempo = e => !!(e && (e.tutTiempo || /abort|timed? ?out|tard/i.test(errMsg(e))));
+function conTiempo(pr, ms) {
+  let t; return Promise.race([pr, new Promise((_, rej) => { t = setTimeout(() => { const e = new Error('El modelo tardó demasiado en responder'); e.tutTiempo = true; rej(e); }, ms); })]).finally(() => clearTimeout(t));
+}
+// Si el modelo fue retirado, pasa al siguiente para siempre. Si está saturado o tarda, reintenta y luego
+// prueba los otros modelos solo para esta respuesta. avisa(texto) muestra en pantalla qué está pasando.
+async function conModelo(fn, avisa = () => {}) {
   let idx = TUT_MI, intentos = 0;
   for (;;) {
-    const T = await tutorInit(idx);
-    try { return await fn(T); }
+    const M = await tutorInit(idx);
+    try { return await fn(M); }
     catch (e) {
-      if (modeloNoDisponible(e) && idx < TUT_MODELOS.length - 1) {
-        idx++; if (idx > TUT_MI) { TUT_MI = idx; try { localStorage.setItem('avz_tut_m', TUT_MI); } catch (x) {} }
-        continue;
+      try { console.warn('Tutor', M.name, e); } catch (x) {}
+      const hay = idx < TUT_MODELOS.length - 1;
+      if (errorPiensa(e) && !TUT_SIN_PIENSA[M.name]) { TUT_SIN_PIENSA[M.name] = 1; continue; }
+      if (modeloNoDisponible(e) && hay) {
+        idx++; if (idx > TUT_MI) { TUT_MI = idx; try { localStorage.setItem('avz_tut_m2', TUT_MI); } catch (x) {} }
+        avisa(`Ese modelo ya no existe. Probando con ${TUT_MODELOS[idx]}…`); continue;
       }
+      if (esTiempo(e) && hay) { idx++; intentos = 0; avisa(`Tardó demasiado. Probando con ${TUT_MODELOS[idx]}…`); continue; }
       if (errorPasajero(e)) {
-        if (intentos < 2) { await new Promise(r => setTimeout(r, [1500, 4000][intentos++])); continue; }
-        if (idx < TUT_MODELOS.length - 1) { idx++; intentos = 0; continue; }
+        if (intentos < 1) { intentos++; avisa('Los servidores de Google están saturados. Reintentando…'); await new Promise(r => setTimeout(r, 2500)); continue; }
+        if (hay) { idx++; intentos = 0; avisa(`Sigue saturado. Probando con ${TUT_MODELOS[idx]}…`); continue; }
       }
       throw e;
     }
@@ -1150,7 +1168,7 @@ function celdaTxt(t, c) {
   }
   return JSON.stringify(c);
 }
-function contextoPregunta(q) {
+function contextoPregunta(q, modo) {
   const t = q.t, it = q.it, x = it.x || {};
   const L = [`Tipo: ${TIPOS[t].n} (nivel ${NIV.indexOf(it.n) + 1} de 4).`, `Enunciado: ${qText(q)}`];
   if (TIPOS[t].g === 'fig' && t !== 'cubo') {
@@ -1173,7 +1191,8 @@ function contextoPregunta(q) {
   L.push('Opciones: ' + q.order.map((orig, pos) => `${LETRAS[pos]}) ${TIPOS[t].g === 'fig' && t !== 'cubo' ? celdaTxt(t, it.o[orig]) : it.o[orig]}`).join(' · '));
   const cp = q.order.indexOf(0);
   L.push(`Respuesta correcta: ${LETRAS[cp]}.`);
-  L.push(q.ans === null || q.ans === undefined ? 'Julián la dejó en blanco.' : `Julián marcó ${LETRAS[q.ans]}${q.order[q.ans] === 0 ? ' (acertó)' : ' (falló)'}.`);
+  if (modo === 'pista') L.push('IMPORTANTE: Julián TODAVÍA NO HA RESPONDIDO. Está pidiendo pistas. NUNCA le digas la respuesta, la letra correcta, el resultado final ni qué opciones descartar. Da solo una pista pequeña por mensaje, cada vez un poco más concreta, y termina con una pregunta para que él piense. Si te pide la respuesta, dile con cariño que primero lo intente.');
+  else L.push(q.ans === null || q.ans === undefined ? 'Julián la dejó en blanco.' : `Julián marcó ${LETRAS[q.ans]}${q.order[q.ans] === 0 ? ' (acertó)' : ' (falló)'}.`);
   L.push('Explicación oficial: ' + it.e.join(' '));
   if (it.k) L.push(`Trampa típica: opción ${LETRAS[q.order.indexOf(it.k[0])]} — ${it.k[1]}.`);
   return L.join('\n');
@@ -1184,74 +1203,138 @@ function mdLite(s) {
     esc(p).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
       .replace(/^\s*[-*] (.*)$/gm, '• $1').replace(/\n/g, '<br>')).join('');
 }
-let TUT_MSGS = [], TUT_Q = null, TUT_CHAT = null, TUT_BUSY = false;
-function abrirTutor(q) {
-  TUT_Q = q; TUT_MSGS = []; TUT_CHAT = null;
-  const ok = q.ans !== null && q.ans !== undefined && q.order[q.ans] === 0;
-  openModal(`<div class="tutor"><h3>🤖 Tutor</h3><p class="muted small" style="margin:0 0 10px">Pregúntale lo que quieras sobre esta pregunta. Usa la IA de Google (Gemini) y puede equivocarse: si algo no cuadra, pídele que lo revise.</p>
-    <div id="tut-log" class="tut-log"></div>
-    <div class="row-actions" id="tut-chips" style="margin:8px 0">
-      <button class="chip" data-tq="${ok ? '¿Por qué esta es la respuesta correcta? Explícamelo paso a paso.' : '¿Por qué me equivoqué? Explícamelo paso a paso, de forma sencilla.'}">${ok ? '¿Por qué es la correcta?' : '¿Por qué fallé?'}</button>
-      <button class="chip" data-tq="Explícamelo todavía más simple, como si fuera la primera vez que veo esto.">Más simple</button>
-      <button class="chip" data-tq="Hazme un dibujo o diagrama con texto que me ayude a ver la regla.">Dibújamelo</button>
-      <button class="chip" data-tq="Ponme una pregunta parecida para practicar. No me des la respuesta hasta que responda.">Una parecida</button>
-      <button class="chip" data-tv="1">Búscame un video</button></div>
-    <div class="tut-in"><input type="text" id="tut-txt" placeholder="Escribe tu pregunta o pega un enlace de YouTube…"><button class="btn primary" id="tut-send">Enviar</button></div></div>`);
-  $modal.querySelector('[data-close]').textContent = 'Cerrar';
-  $modal.querySelectorAll('[data-tq]').forEach(b => b.onclick = () => tutorEnviar(b.dataset.tq));
-  $modal.querySelector('[data-tv]').onclick = tutorVideo;
-  const inp = document.getElementById('tut-txt');
-  document.getElementById('tut-send').onclick = () => { const v = inp.value.trim(); if (v) { inp.value = ''; tutorEnviar(v); } };
-  inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('tut-send').click(); } };
-  tutorRender();
-}
-function tutorRender() {
-  const log = document.getElementById('tut-log'); if (!log) return;
-  log.innerHTML = TUT_MSGS.length ? TUT_MSGS.map(m => `<div class="tm ${m.r}">${m.r === 'u' ? esc(m.t) : mdLite(m.t || '…')}</div>`).join('') : '<p class="muted small" style="margin:0">Elige una opción de abajo o escribe tu pregunta.</p>';
-  log.scrollTop = log.scrollHeight;
-}
 function tutorError(e) {
   const cd = (e && e.customData) || {};
   const m = [e && e.message, e && e.code, cd.status, cd.statusText, cd.errorDetails && JSON.stringify(cd.errorDetails)].filter(Boolean).join(' | ') || String(e);
   try { console.error('Tutor', e, cd); } catch (x) {}
+  if (e && e.tutTiempo) return 'La IA de Google tardó demasiado en responder. Intenta otra vez en un momento.';
   if (/API_KEY_SERVICE_BLOCKED|are blocked/i.test(m)) return 'La clave de la app no tiene permiso para usar la IA (hay que habilitarla en Google Cloud). Detalle: ' + m.slice(0, 600);
+  if (/App Check/i.test(m)) return 'Firebase está bloqueando al tutor (App Check). Detalle: ' + m.slice(0, 400);
   if (/api-not-enabled|not been used|SERVICE_DISABLED|disabled/i.test(m)) return 'La IA todavía no está activada en el proyecto (o se está activando: espera unos minutos). Detalle: ' + m.slice(0, 600);
-  if (/quota|429|RESOURCE_EXHAUSTED|503|high demand|overloaded|UNAVAILABLE/i.test(m)) return 'El tutor está ocupado o se acabó su uso gratis por ahora. Intenta en un minuto.';
+  if (/quota|429|RESOURCE_EXHAUSTED|503|\[500|high demand|overloaded|UNAVAILABLE/i.test(m)) return 'Los servidores de Google están saturados o se acabó el uso gratis por ahora. Intenta en uno o dos minutos. Detalle: ' + m.slice(0, 300);
   if (/Failed to fetch|NetworkError|network/i.test(m)) return 'Sin conexión a internet.';
   return 'No pude responder. Detalle: ' + m.slice(0, 700);
 }
-async function tutorEnviar(texto) {
-  if (TUT_BUSY) return;
-  TUT_BUSY = true;
-  TUT_MSGS.push({ r: 'u', t: texto }); const out = { r: 'a', t: '' }; TUT_MSGS.push(out); tutorRender();
+// ------------------------------------------------------------------ panel del tutor (estilo DataCamp: al lado, sin tapar la pregunta)
+const TP = { q: null, busy: false, gen: 0, out: null, status: '' };
+const TP_MEM = {}; // conversación guardada por pregunta
+const tpKey = q => q.it.i + ':' + q.order.join('');
+const tpMsgs = q => (TP_MEM[tpKey(q)] = TP_MEM[tpKey(q)] || []);
+function tpModo(q) {
+  if (VIEW === 'results') return 'explicar';
+  if (CUR && CUR.mode === 'simulacro') return 'off';
+  return q.checked ? 'explicar' : 'pista';
+}
+function tpEl() {
+  let el = document.getElementById('tpanel');
+  if (!el) {
+    el = document.createElement('aside'); el.id = 'tpanel'; el.className = 'tpanel'; el.hidden = true; el.setAttribute('aria-label', 'Tutor');
+    el.innerHTML = `<div class="tp-head"><span class="tp-title">🤖 Tutor</span><span class="tp-sub" id="tp-sub"></span><button class="icon-btn" id="tp-min" aria-label="Minimizar">▾</button><button class="icon-btn" id="tp-x" aria-label="Cerrar">✕</button></div>
+      <div class="tp-log" id="tp-log"></div><div class="tp-status" id="tp-st"></div><div class="tp-chips" id="tp-chips"></div>
+      <div class="tut-in"><textarea id="tp-txt" rows="1" placeholder="Escribe tu pregunta o pega un link de YouTube"></textarea><button class="btn primary" id="tp-send">Enviar</button></div>
+      <p class="tp-foot">Usa Gemini (IA de Google) y puede equivocarse: si algo no cuadra, pídele que lo revise.</p>`;
+    document.body.appendChild(el);
+    el.querySelector('#tp-x').onclick = tutorCerrar;
+    el.querySelector('#tp-min').onclick = () => { el.classList.toggle('min'); el.querySelector('#tp-min').textContent = el.classList.contains('min') ? '▴' : '▾'; };
+    el.querySelector('.tp-head').addEventListener('click', e => { if (el.classList.contains('min') && !e.target.closest('button')) el.querySelector('#tp-min').click(); });
+    const inp = el.querySelector('#tp-txt');
+    el.querySelector('#tp-send').onclick = () => { if (TP.busy) return tpDetener(); const v = inp.value.trim(); if (v) { inp.value = ''; inp.style.height = ''; tpEnviar(v); } };
+    inp.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); el.querySelector('#tp-send').click(); } };
+    inp.oninput = () => { inp.style.height = ''; inp.style.height = Math.min(inp.scrollHeight, 120) + 'px'; };
+  }
+  return el;
+}
+function tutorAbierto() { const el = document.getElementById('tpanel'); return !!(el && !el.hidden); }
+function abrirTutor(q, pedir) {
+  const el = tpEl();
+  if (TP.q && tpKey(TP.q) !== tpKey(q)) tpDetener(true);
+  TP.q = q; el.hidden = false; el.classList.remove('min'); el.querySelector('#tp-min').textContent = '▾';
+  document.body.classList.add('tp-on');
+  tpRender();
+  if (pedir && !tpMsgs(q).some(m => m.r === 'u' && m.modo === tpModo(q))) tpEnviar(pedir);
+  else if (window.innerWidth >= 1000) el.querySelector('#tp-txt').focus();
+}
+function tutorCerrar() { tpDetener(true); const el = document.getElementById('tpanel'); if (el) el.hidden = true; document.body.classList.remove('tp-on'); }
+// al cambiar de pregunta con el panel abierto, el tutor pasa a la nueva (sin escribir nada solo)
+function tutorSeguir(q) {
+  if (!tutorAbierto()) return;
+  if (!q || tpModo(q) === 'off') return tutorCerrar();
+  if (!TP.q || tpKey(TP.q) !== tpKey(q)) { tpDetener(true); TP.q = q; }
+  tpRender();
+}
+function tpChips(q, modo) {
+  if (modo === 'pista') return [['Dame una pista', 'Dame una pista pequeña para empezar, sin decirme la respuesta.'], ['Otra pista, más clara', 'Dame otra pista un poco más clara, todavía sin la respuesta.'], ['¿Qué miro primero?', '¿En qué me debo fijar primero en esta pregunta?'], ['Explícame el método', 'Explícame en pasos cómo se resuelven en general las preguntas de este tipo, sin resolver esta.']];
+  const ok = q.ans !== null && q.ans !== undefined && q.order[q.ans] === 0;
+  return [[ok ? '¿Por qué es la correcta?' : '¿Por qué fallé?', ok ? '¿Por qué esta es la respuesta correcta? Explícamelo paso a paso.' : '¿Por qué me equivoqué? Explícamelo paso a paso, de forma sencilla.'], ['Más simple', 'Explícamelo todavía más simple, como si fuera la primera vez que veo esto.'], ['Dibújamelo', 'Hazme un dibujo o diagrama con texto que me ayude a ver la regla.'], ['Una parecida', 'Ponme una pregunta parecida para practicar. No me des la respuesta hasta que responda.'], ['Búscame un video', null]];
+}
+function tpRender() {
+  const el = document.getElementById('tpanel'); if (!el || !TP.q) return;
+  const q = TP.q, modo = tpModo(q), msgs = tpMsgs(q);
+  el.querySelector('#tp-sub').textContent = modo === 'off' ? '' : `${TIPOS[q.t].n} · ${modo === 'pista' ? 'modo pistas' : 'explicación'}`;
+  const log = el.querySelector('#tp-log');
+  let intro;
+  if (modo === 'off') intro = '<p class="muted small">En el simulacro el tutor está apagado, como en el examen real. Al terminar puedes preguntarle por cada error desde los resultados.</p>';
+  else if (modo === 'pista') intro = `<p class="muted small">Todavía no respondes esta pregunta: te doy <b>pistas</b>, no la respuesta. Las preguntas en que uses pistas no cuentan para subir de nivel.</p>`;
+  else intro = '<p class="muted small">Pregúntame lo que quieras sobre esta pregunta: por qué fallaste, un dibujo, una parecida o un video.</p>';
+  log.innerHTML = intro + msgs.map(m => `<div class="tm ${m.r}">${m.r === 'u' ? esc(m.t) : (m.t ? mdLite(m.t) : '<span class="dots"><i></i><i></i><i></i></span>')}</div>`).join('');
+  log.scrollTop = log.scrollHeight;
+  el.querySelector('#tp-st').textContent = TP.status;
+  const ch = el.querySelector('#tp-chips');
+  ch.innerHTML = modo === 'off' ? '' : tpChips(q, modo).map(([l, t], i) => `<button class="chip${i === 0 ? ' tutor-chip' : ''}" data-i="${i}">${l}</button>`).join('');
+  const lista = tpChips(q, modo);
+  ch.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { const [l, t] = lista[+b.dataset.i]; t ? tpEnviar(t) : tpVideo(); });
+  const send = el.querySelector('#tp-send'), inp = el.querySelector('#tp-txt');
+  send.textContent = TP.busy ? 'Detener' : 'Enviar'; send.classList.toggle('stop', TP.busy);
+  inp.disabled = modo === 'off'; send.disabled = modo === 'off';
+}
+function tpEstado(t) { TP.status = t; const st = document.getElementById('tp-st'); if (st) st.textContent = t; }
+function tpDetener(silencio) {
+  if (!TP.busy) return;
+  TP.gen++; TP.busy = false; tpEstado('');
+  if (TP.out && !TP.out.t) TP.out.t = silencio ? '(Se detuvo.)' : '(Detuviste la respuesta.)';
+  if (!silencio) tpRender();
+}
+function tpHistorial(msgs) {
+  const h = [];
+  for (let i = 0; i + 1 < msgs.length; i += 2) if (msgs[i].r === 'u' && msgs[i + 1].t && !/^⚠|^\(/.test(msgs[i + 1].t)) h.push({ role: 'user', parts: [{ text: msgs[i].t }] }, { role: 'model', parts: [{ text: msgs[i + 1].t }] });
+  return h;
+}
+async function tpEnviar(texto) {
+  const q = TP.q; if (!q || TP.busy) return;
+  const modo = tpModo(q); if (modo === 'off') return;
+  if (modo === 'pista' && !q.hint && VIEW === 'quiz') { q.hint = true; saveCur(); }
+  const msgs = tpMsgs(q), previos = msgs.slice();
+  msgs.push({ r: 'u', t: texto, modo }); const out = { r: 'a', t: '' }; msgs.push(out);
+  const gen = ++TP.gen; TP.busy = true; TP.out = out; TP.status = 'Pensando…'; tpRender();
+  const vivo = () => gen === TP.gen;
   try {
     const yt = texto.match(/https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)[\w\-?=&]+/i);
     const parts = yt ? [{ text: texto + '\n\nMira este video y dime qué explica y en qué minutos (MM:SS) está lo útil para esta pregunta.' }, { fileData: { mimeType: 'video/mp4', fileUri: yt[0] } }] : [{ text: texto }];
-    await conModelo(async T => {
-      if (!TUT_CHAT) {
-        const prev = TUT_MSGS.slice(0, -2), hist = [];
-        for (let i = 0; i + 1 < prev.length; i += 2) if (prev[i].r === 'u' && prev[i + 1].t && !prev[i + 1].t.startsWith('⚠')) hist.push({ role: 'user', parts: [{ text: prev[i].t }] }, { role: 'model', parts: [{ text: prev[i + 1].t }] });
-        TUT_CHAT = T.model.startChat({ history: [{ role: 'user', parts: [{ text: 'Esta es la pregunta que acabo de responder:\n' + contextoPregunta(TUT_Q) }] }, { role: 'model', parts: [{ text: 'Entendido. ¿Qué quieres saber?' }] }].concat(hist) });
-      }
+    await conModelo(async M => {
+      const chat = M.model.startChat({ history: [{ role: 'user', parts: [{ text: 'Esta es la pregunta:\n' + contextoPregunta(q, modo) }] }, { role: 'model', parts: [{ text: 'Entendido. ¿Qué quieres saber?' }] }].concat(tpHistorial(previos)) });
       out.t = '';
-      const res = await TUT_CHAT.sendMessageStream(parts);
-      for await (const ch of res.stream) { out.t += ch.text(); tutorRender(); }
-    });
-  } catch (e) { out.t = '⚠ ' + tutorError(e); TUT_CHAT = null; }
-  TUT_BUSY = false; tutorRender();
+      const res = await conTiempo(chat.sendMessageStream(parts), yt ? 120000 : 40000);
+      if (!vivo()) return;
+      tpEstado('Escribiendo…');
+      for await (const c of res.stream) { if (!vivo()) return; try { out.t += c.text(); } catch (x) {} tpRender(); }
+      if (!out.t) throw Object.assign(new Error('Respuesta vacía'), { tutTiempo: true });
+    }, t => { if (vivo()) { tpEstado(t); } });
+  } catch (e) { if (vivo()) out.t = '⚠ ' + tutorError(e); }
+  if (vivo()) { TP.busy = false; TP.status = ''; tpRender(); }
 }
-async function tutorVideo() {
-  if (TUT_BUSY) return;
-  TUT_BUSY = true;
-  const t = TUT_Q.t;
-  TUT_MSGS.push({ r: 'u', t: 'Búscame un video que explique este tipo de pregunta.' }); const out = { r: 'a', t: '' }; TUT_MSGS.push(out); tutorRender();
+async function tpVideo() {
+  const q = TP.q; if (!q || TP.busy) return;
+  const t = q.t, msgs = tpMsgs(q);
+  msgs.push({ r: 'u', t: 'Búscame un video que explique este tipo de pregunta.' }); const out = { r: 'a', t: '' }; msgs.push(out);
+  const gen = ++TP.gen; TP.busy = true; TP.out = out; TP.status = 'Buscando videos en internet…'; tpRender();
+  const vivo = () => gen === TP.gen;
   try {
-    const r = await conModelo(T => T.searchModel.generateContent(`Busca en internet 2 o 3 videos de YouTube en español que expliquen bien cómo resolver preguntas psicotécnicas de tipo «${TIPOS[t].n}» (${TIPOS[t].yt}). Para cada uno da: título, canal, el enlace directo de YouTube (https://www.youtube.com/watch?v=...) y en una línea por qué sirve. Si no estás seguro de un enlace, no lo pongas. Al final dile que, si pega uno de esos enlaces aquí, le dices los minutos exactos que le sirven.`));
-    out.t = r.response.text();
+    const r = await conModelo(M => conTiempo(M.searchModel.generateContent(`Busca en internet 2 o 3 videos de YouTube en español que expliquen bien cómo resolver preguntas psicotécnicas de tipo «${TIPOS[t].n}» (${TIPOS[t].yt}). Para cada uno da: título, canal, el enlace directo de YouTube (https://www.youtube.com/watch?v=...) y en una línea por qué sirve. Si no estás seguro de un enlace, no lo pongas. Al final dile que, si pega uno de esos enlaces aquí, le dices los minutos exactos que le sirven.`), 60000), t2 => { if (vivo()) tpEstado(t2); });
+    if (vivo()) out.t = r.response.text();
   } catch (e) {
-    out.t = `No pude buscar videos automáticamente (${tutorError(e)}). Aquí tienes una búsqueda en YouTube: ${ytLink(t)} — si pegas aquí el enlace de un video, te digo qué explica y en qué minutos.`;
+    if (vivo()) out.t = `No pude buscar videos automáticamente (${tutorError(e)}). Aquí tienes una búsqueda en YouTube: ${ytLink(t)} — si pegas aquí el enlace de un video, te digo qué explica y en qué minutos.`;
   }
-  TUT_BUSY = false; tutorRender();
+  if (vivo()) { TP.busy = false; TP.status = ''; tpRender(); }
 }
 
 initSync();
