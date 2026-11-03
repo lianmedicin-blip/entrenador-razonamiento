@@ -1059,7 +1059,7 @@ function renderSettings() {
       <p><b>Corrige al instante y te pregunta por qué fallaste.</b> Explicarte el error y revisar con calma los errores que cometiste estando seguro ayuda a no repetirlos.</p>
       <p><b>Ejemplos resueltos al empezar.</b> En los primeros niveles te muestra un ejemplo resuelto paso a paso; al subir de nivel deja de mostrarlos, porque ya estorban.</p>
       <p><b>Preguntas comprobadas.</b> Las de figuras y las de lógica se comprueban por código para que solo una opción sea correcta; en las numéricas la respuesta se calcula. Las analogías verbales están escritas a mano. Si ves una pregunta que crees mal hecha, avísale a quien te ayuda a mantener la app.</p>
-      <p class="muted small">Versión de la app: 2026-11-03 · tutor 7</p>
+      <p class="muted small">Versión de la app: 2026-11-03 · tutor 8</p>
       <p style="margin-bottom:0" class="muted">Código abierto: <a href="https://github.com/lianmedicin-blip/entrenador-razonamiento" target="_blank" rel="noopener">github.com/lianmedicin-blip/entrenador-razonamiento</a></p>
     </div>`;
   bindGo();
@@ -1089,7 +1089,9 @@ const AI_VER = '11.10.0';
 const TUTOR_SYS = `Eres el tutor personal de Julián (19 años, Bogotá), que se prepara para un examen de admisión de pensamiento lógico y abstracto (psicotécnico, en español).
 Reglas:
 - Háblale de tú (nunca de vos), en español de Colombia, claro y sencillo, como un buen profesor particular.
+- Ve directo al grano: nada de saludos, «¡Claro que sí!», «¡Vamos!» ni relleno. La primera frase ya debe ayudar.
 - Respuestas cortas: máximo unas 120 palabras, salvo que pida más. Usa pasos numerados cuando expliques.
+- Piensa y razona siempre en español.
 - Explica con la pregunta concreta que te paso (sus números, letras o figuras), no en abstracto.
 - Si fallo una pregunta, primero dile en una línea qué regla no vio, luego los pasos para resolverla y al final un truco para no volver a caer.
 - Para ayudarte a visualizar puedes dibujar diagramas sencillos con texto dentro de un bloque de código (\`\`\`).
@@ -1098,9 +1100,9 @@ Reglas:
 - Si te pasa un enlace de YouTube que puedes ver, resume qué explica y da los minutos exactos (MM:SS) de las partes útiles. Si no puedes ver el video, dilo claramente.`;
 let TUTOR = null; // { ai, aiMod, cache: {nombre: {model, searchModel}} }
 // Google retira y satura modelos: se prueba en este orden. Si uno fue retirado, se salta para siempre.
-const TUT_MODELOS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-flash-latest'];
-const TUT_PIENSA = { 'gemini-3.8-flash': 'low' }; // pensar poco = responde más rápido
-let TUT_MI = 0; try { TUT_MI = Math.min(+localStorage.getItem('avz_tut_m2') || 0, TUT_MODELOS.length - 1); } catch (e) {}
+const TUT_MODELOS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']; // el lite primero: responde en segundos
+const TUT_PIENSA = { 'gemini-3.5-flash-lite': 'low', 'gemini-3.8-flash': 'low' }; // pensar poco = responde más rápido; igual muestra su razonamiento
+let TUT_MI = 0; try { TUT_MI = Math.min(+localStorage.getItem('avz_tut_m3') || 0, TUT_MODELOS.length - 1); } catch (e) {}
 const TUT_SIN_PIENSA = {};
 async function tutorInit(idx) {
   if (!TUTOR) {
@@ -1111,7 +1113,7 @@ async function tutorInit(idx) {
   }
   const name = TUT_MODELOS[idx], key = name + (TUT_SIN_PIENSA[name] ? '-np' : '');
   if (!TUTOR.cache[key]) {
-    const gc = TUT_PIENSA[name] && !TUT_SIN_PIENSA[name] ? { generationConfig: { thinkingConfig: { thinkingLevel: TUT_PIENSA[name] } } } : {};
+    const gc = TUT_SIN_PIENSA[name] ? {} : { generationConfig: { thinkingConfig: Object.assign({ includeThoughts: true }, TUT_PIENSA[name] ? { thinkingLevel: TUT_PIENSA[name] } : {}) } };
     const ro = { timeout: 45000 };
     TUTOR.cache[key] = {
       name,
@@ -1143,7 +1145,7 @@ async function conModelo(fn, avisa = () => {}) {
       const hay = idx < TUT_MODELOS.length - 1;
       if (errorPiensa(e) && !TUT_SIN_PIENSA[M.name]) { TUT_SIN_PIENSA[M.name] = 1; continue; }
       if (modeloNoDisponible(e) && hay) {
-        idx++; if (idx > TUT_MI) { TUT_MI = idx; try { localStorage.setItem('avz_tut_m2', TUT_MI); } catch (x) {} }
+        idx++; if (idx > TUT_MI) { TUT_MI = idx; try { localStorage.setItem('avz_tut_m3', TUT_MI); } catch (x) {} }
         avisa(`Ese modelo ya no existe. Probando con ${TUT_MODELOS[idx]}…`); continue;
       }
       if (esTiempo(e) && hay) { idx++; intentos = 0; avisa(`Tardó demasiado. Probando con ${TUT_MODELOS[idx]}…`); continue; }
@@ -1278,7 +1280,8 @@ function tpRender() {
   if (modo === 'off') intro = '<p class="muted small">En el simulacro el tutor está apagado, como en el examen real. Al terminar puedes preguntarle por cada error desde los resultados.</p>';
   else if (modo === 'pista') intro = `<p class="muted small">Todavía no respondes esta pregunta: te doy <b>pistas</b>, no la respuesta. Las preguntas en que uses pistas no cuentan para subir de nivel.</p>`;
   else intro = '<p class="muted small">Pregúntame lo que quieras sobre esta pregunta: por qué fallaste, un dibujo, una parecida o un video.</p>';
-  log.innerHTML = intro + msgs.map(m => `<div class="tm ${m.r}">${m.r === 'u' ? esc(m.t) : (m.t ? mdLite(m.t) : '<span class="dots"><i></i><i></i><i></i></span>')}</div>`).join('');
+  log.innerHTML = intro + msgs.map((m, i) => `<div class="tm ${m.r}"${i === msgs.length - 1 ? ' id="tp-last"' : ''}>${m.r === 'u' ? esc(m.t) : tmHtml(m)}</div>`).join('');
+  tpToggles();
   log.scrollTop = log.scrollHeight;
   tpPinta();
   const ch = el.querySelector('#tp-chips');
@@ -1289,6 +1292,40 @@ function tpRender() {
   send.textContent = TP.busy ? 'Detener' : 'Enviar'; send.classList.toggle('stop', TP.busy);
   inp.disabled = modo === 'off'; send.disabled = modo === 'off';
 }
+// mensaje del tutor estilo ChatGPT: razonamiento plegable + respuesta que va saliendo letra por letra
+function tmHtml(m) {
+  const vivo = m === TP.out && (TP.busy || (m.shown !== undefined && m.shown < m.t.length));
+  const txt = m.shown !== undefined ? m.t.slice(0, m.shown) : m.t;
+  let h = '';
+  if (m.th) {
+    const abierto = m.thOpen !== undefined ? m.thOpen : !m.t;
+    const seg = m.thSeg ? `Razonó durante ${m.thSeg} s` : 'Razonando…';
+    h += `<details class="think-b"${abierto ? ' open' : ''}><summary>${m.thSeg ? '' : '<span class="pulse"></span>'}${seg}</summary><div class="think-t">${mdLite(m.th)}</div></details>`;
+  }
+  if (txt) h += mdLite(txt) + (vivo ? '<span class="caret"></span>' : '');
+  else if (!m.th) h += '<span class="dots"><i></i><i></i><i></i></span>';
+  return h;
+}
+function tpToggles() {
+  const last = document.getElementById('tp-last'); if (!last) return;
+  const d = last.querySelector('details.think-b'); if (d) d.querySelector('summary').onclick = () => { if (TP.out) TP.out.thOpen = !d.open; };
+}
+function tpPintaUltimo() {
+  const last = document.getElementById('tp-last'), log = document.getElementById('tp-log');
+  if (!last || !TP.out) return;
+  const abajo = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+  last.innerHTML = tmHtml(TP.out); tpToggles();
+  if (abajo) log.scrollTop = log.scrollHeight;
+}
+(function tpAnim() {
+  const o = TP.out;
+  if (o && o.shown !== undefined && o.shown < o.t.length) {
+    const falta = o.t.length - o.shown;
+    o.shown = Math.min(o.t.length, o.shown + Math.max(2, Math.ceil(falta / 8)));
+    tpPintaUltimo();
+  }
+  requestAnimationFrame(tpAnim);
+})();
 function tpEstado(t) { TP.status = t; TP.t0 = Date.now(); tpPinta(); }
 function tpPinta() { const st = document.getElementById('tp-st'); if (!st) return; st.textContent = TP.status ? `${TP.status} · ${Math.round((Date.now() - (TP.t0 || Date.now())) / 1000)} s${TP.modelo ? ' · ' + TP.modelo : ''}` : ''; }
 setInterval(() => { if (TP.busy) tpPinta(); }, 1000);
@@ -1316,7 +1353,7 @@ async function tpEnviar(texto) {
     const parts = yt ? [{ text: texto + '\n\nMira este video y dime qué explica y en qué minutos (MM:SS) está lo útil para esta pregunta.' }, { fileData: { mimeType: 'video/mp4', fileUri: yt[0] } }] : [{ text: texto }];
     await conModelo(async M => {
       const chat = M.model.startChat({ history: [{ role: 'user', parts: [{ text: 'Esta es la pregunta:\n' + contextoPregunta(q, modo) }] }, { role: 'model', parts: [{ text: 'Entendido. ¿Qué quieres saber?' }] }].concat(tpHistorial(previos)) });
-      out.t = '';
+      out.t = ''; out.th = ''; out.shown = 0; out.thSeg = 0; const t0 = Date.now();
       const res = await conTiempo(chat.sendMessageStream(parts), yt ? 120000 : 25000);
       if (!vivo()) return;
       tpEstado('Escribiendo…');
@@ -1324,12 +1361,18 @@ async function tpEnviar(texto) {
       for (;;) {
         const { value: c, done } = await conTiempo(it.next(), out.t ? 30000 : 25000);
         if (done || !vivo()) break;
-        try { out.t += c.text(); } catch (x) {}
-        tpRender();
+        const ps = (c && c.candidates && c.candidates[0] && c.candidates[0].content && c.candidates[0].content.parts) || [];
+        for (const pa of ps) {
+          if (typeof pa.text !== 'string') continue;
+          if (pa.thought) { out.th += pa.text; tpEstado('Razonando…'); }
+          else { if (!out.t && out.th) out.thSeg = Math.max(1, Math.round((Date.now() - t0) / 1000)); if (!out.t) tpEstado('Escribiendo…'); out.t += pa.text; }
+        }
+        tpPintaUltimo();
       }
+      if (out.th && !out.thSeg) out.thSeg = Math.max(1, Math.round((Date.now() - t0) / 1000));
       if (!out.t) throw Object.assign(new Error('Respuesta vacía'), { tutTiempo: true });
     }, t => { if (vivo()) { tpEstado(t); } });
-  } catch (e) { if (vivo()) out.t = '⚠ ' + tutorError(e); }
+  } catch (e) { if (vivo()) { out.t = '⚠ ' + tutorError(e); out.shown = undefined; } }
   if (vivo()) { TP.busy = false; TP.status = ''; TP.modelo = ''; tpRender(); }
 }
 async function tpVideo() {

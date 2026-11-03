@@ -244,3 +244,13 @@ body.tp-on .app { padding-bottom: calc(62vh + 24px); }
   body.tp-on .app { padding-bottom: 96px; margin-right: 400px; margin-left: max(0px, calc((100vw - 400px - 720px) / 2)); }
   body.tp-on .navbar { right: 400px; }
 }
+
+.think-b { margin: 0 0 8px; border-left: 3px solid var(--line); padding-left: 10px; }
+.think-b summary { cursor: pointer; font-size: 13px; color: var(--ink-3); font-weight: 600; list-style: none; display: flex; align-items: center; gap: 6px; }
+.think-b summary::-webkit-details-marker { display: none; }
+.think-b summary::after { content: '▸'; font-size: 11px; }
+.think-b[open] summary::after { content: '▾'; }
+.think-t { font-size: 13px; color: var(--ink-3); line-height: 1.5; margin-top: 4px; max-height: 180px; overflow-y: auto; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); animation: tpdot 1s infinite ease-in-out; }
+.caret { display: inline-block; width: 8px; height: 1.05em; margin-left: 2px; vertical-align: text-bottom; background: var(--ink); animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
