@@ -277,3 +277,19 @@ body.tp-on.tp-min .app { padding-bottom: 160px; }
 .razon > span { display: block; margin-bottom: 6px; font-size: 14.5px; }
 .razon textarea { box-sizing: border-box; width: 100%; font: inherit; font-size: 15px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); resize: vertical; }
 .razon textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+
+.instr { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--primary); border-radius: 14px; padding: 12px 14px; margin: 10px 0 14px; }
+.instr-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.instr ol { margin: 4px 0 0; padding-left: 20px; font-size: 14.5px; line-height: 1.55; }
+.xp { font-weight: 800; font-size: 13px; background: var(--warn-soft); border-radius: 999px; padding: 3px 10px; }
+.opt.tried { opacity: .55; }
+.chip[disabled] { opacity: .45; cursor: default; }
+.chapters { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.chapter { display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; }
+.chapter.next { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.chapter.done .lec-n { background: var(--good, #1a7f4b); color: #fff; }
+.chapter.next .lec-n { background: var(--primary); color: var(--primary-ink); }
+.ch-body small { display: block; color: var(--ink-2); font-size: 13.5px; margin-top: 3px; }
+.ch-body .ch-meta { color: var(--ink-3); font-size: 12.5px; }
+.course-head .progress { margin: 0; }
+.course-head .lvl { display: inline-block; margin: 0; }

@@ -537,6 +537,7 @@ function render() {
   if (VIEW === 'progress') return renderProgress();
   if (VIEW === 'settings') return renderSettings();
   if (VIEW === 'cursos') return renderCursos();
+  if (VIEW === 'curso') return renderCurso();
   if (VIEW === 'leccion') return renderLeccion();
 }
 function topBar(back = false, title = '') {
@@ -1067,7 +1068,7 @@ function renderSettings() {
       <p><b>Corrige al instante y te pregunta por qué fallaste.</b> Explicarte el error y revisar con calma los errores que cometiste estando seguro ayuda a no repetirlos.</p>
       <p><b>Ejemplos resueltos al empezar.</b> En los primeros niveles te muestra un ejemplo resuelto paso a paso; al subir de nivel deja de mostrarlos, porque ya estorban.</p>
       <p><b>Preguntas comprobadas.</b> Las de figuras y las de lógica se comprueban por código para que solo una opción sea correcta; en las numéricas la respuesta se calcula. Las analogías verbales están escritas a mano. Si ves una pregunta que crees mal hecha, avísale a quien te ayuda a mantener la app.</p>
-      <p class="muted small">Versión de la app: 2026-11-03 · cursos 2</p>
+      <p class="muted small">Versión de la app: 2026-11-03 · cursos 3</p>
       <p style="margin-bottom:0" class="muted">Código abierto: <a href="https://github.com/lianmedicin-blip/entrenador-razonamiento" target="_blank" rel="noopener">github.com/lianmedicin-blip/entrenador-razonamiento</a></p>
     </div>`;
   bindGo();
@@ -1204,6 +1205,7 @@ function contextoPregunta(q, modo) {
   L.push('Opciones: ' + q.order.map((orig, pos) => `${LETRAS[pos]}) ${TIPOS[t].g === 'fig' && t !== 'cubo' ? celdaTxt(t, it.o[orig]) : it.o[orig]}`).join(' · '));
   const cp = q.order.indexOf(0);
   L.push(`Respuesta correcta: ${LETRAS[cp]}.`);
+  if (modo === 'pista' && q.malas && q.malas.length) L.push(`Julián ya intentó y falló con: ${q.malas.map(m => LETRAS[m]).join(', ')}. Puede volver a intentarlo.`);
   if (modo === 'pista') L.push('IMPORTANTE: Julián TODAVÍA NO HA RESPONDIDO. Está pidiendo pistas. NUNCA le digas la respuesta, la letra correcta, el resultado final ni qué opciones descartar. Da solo una pista pequeña por mensaje, cada vez un poco más concreta, y termina con una pregunta para que él piense. Si te pide la respuesta, dile con cariño que primero lo intente.');
   else L.push(q.ans === null || q.ans === undefined ? 'Julián la dejó en blanco.' : `Julián marcó ${LETRAS[q.ans]}${q.order[q.ans] === 0 ? ' (acertó)' : ' (falló)'}.`);
   if (q.razon) L.push(`Razonamiento que escribió Julián antes de responder: «${q.razon}»`);
@@ -1236,7 +1238,7 @@ const tpKey = q => q.it.i + ':' + q.order.join('');
 const tpMsgs = q => (TP_MEM[tpKey(q)] = TP_MEM[tpKey(q)] || []);
 function tpModo(q) {
   if (VIEW === 'results') return 'explicar';
-  if (VIEW === 'leccion' || VIEW === 'cursos') return q.checked ? 'explicar' : 'pista';
+  if (VIEW === 'leccion' || VIEW === 'cursos' || VIEW === 'curso') return q.checked ? 'explicar' : 'pista';
   if (CUR && CUR.mode === 'simulacro') return 'off';
   return q.checked ? 'explicar' : 'pista';
 }
@@ -1260,13 +1262,13 @@ function tpEl() {
   return el;
 }
 function tutorAbierto() { const el = document.getElementById('tpanel'); return !!(el && !el.hidden); }
-function abrirTutor(q, pedir) {
+function abrirTutor(q, pedir, opt = {}) {
   const el = tpEl();
   if (TP.q && tpKey(TP.q) !== tpKey(q)) tpDetener(true);
   TP.q = q; el.hidden = false; el.classList.remove('min'); document.body.classList.remove('tp-min'); el.querySelector('#tp-min').textContent = '▾';
   document.body.classList.add('tp-on');
   tpRender();
-  if (pedir && !tpMsgs(q).some(m => m.r === 'u' && m.modo === tpModo(q))) tpEnviar(pedir);
+  if (pedir && (opt.forzar || !tpMsgs(q).some(m => m.r === 'u' && m.modo === tpModo(q)))) { if (TP.busy) tpDetener(true); tpEnviar(pedir, opt); }
   else if (window.innerWidth >= 760) el.querySelector('#tp-txt').focus();
 }
 function tutorCerrar() { tpDetener(true); const el = document.getElementById('tpanel'); if (el) el.hidden = true; document.body.classList.remove('tp-on', 'tp-min'); }
@@ -1289,7 +1291,7 @@ function tpRender() {
   const log = el.querySelector('#tp-log');
   let intro;
   if (modo === 'off') intro = '<p class="muted small">En el simulacro el tutor está apagado, como en el examen real. Al terminar puedes preguntarle por cada error desde los resultados.</p>';
-  else if (modo === 'pista') intro = `<p class="muted small">Todavía no respondes esta pregunta: te doy <b>pistas</b>, no la respuesta. Las preguntas en que uses pistas no cuentan para subir de nivel.</p>`;
+  else if (modo === 'pista') intro = `<p class="muted small">Todavía no resuelves esta pregunta: te doy <b>pistas</b>, no la respuesta. ${VIEW === 'leccion' ? 'Pedir una pista resta 30 XP; revisar tu razonamiento es gratis.' : 'Las preguntas en que uses pistas no cuentan para subir de nivel.'}</p>`;
   else intro = '<p class="muted small">Pregúntame lo que quieras sobre esta pregunta: por qué fallaste, un dibujo, una parecida o un video.</p>';
   log.innerHTML = intro + msgs.map((m, i) => `<div class="tm ${m.r}"${i === msgs.length - 1 ? ' id="tp-last"' : ''}>${m.r === 'u' ? esc(m.t) : tmHtml(m)}</div>`).join('');
   tpToggles();
@@ -1351,10 +1353,10 @@ function tpHistorial(msgs) {
   for (let i = 0; i + 1 < msgs.length; i++) if (msgs[i].r === 'u' && msgs[i + 1].r === 'a' && msgs[i + 1].t && !msgs[i + 1].local && !/^⚠|^\(/.test(msgs[i + 1].t)) { h.push({ role: 'user', parts: [{ text: msgs[i].t }] }, { role: 'model', parts: [{ text: msgs[i + 1].t }] }); i++; }
   return h;
 }
-async function tpEnviar(texto) {
+async function tpEnviar(texto, opt = {}) {
   const q = TP.q; if (!q || TP.busy) return;
   const modo = tpModo(q); if (modo === 'off') return;
-  if (modo === 'pista' && !q.hint) { q.hint = true; if (VIEW === 'quiz') saveCur(); }
+  if (modo === 'pista' && !q.hint && !opt.libre) { q.hint = true; if (VIEW === 'quiz') saveCur(); if (VIEW === 'leccion') lecPintaXP(); }
   const msgs = tpMsgs(q), previos = msgs.slice();
   msgs.push({ r: 'u', t: texto, modo }); const out = { r: 'a', t: '' }; msgs.push(out);
   const gen = ++TP.gen; TP.busy = true; TP.out = out; TP.status = 'Pensando…'; TP.t0 = Date.now(); tpRender();
@@ -1421,18 +1423,33 @@ function renderCursos() {
     return `<button class="type" data-curso="${t}"><span class="lvl">${hechas}/4 lecciones</span><b>${info.n}</b><div class="bar"><i style="width:${hechas * 25}%"></i></div><small>${hechas === 4 ? '✓ Curso completo' : hechas ? 'Sigue: lección ' + ([0, 1, 2, 3].find(L => !c[L]) + 1) : 'Sin empezar'}</small></button>`;
   }).join('');
   $app.innerHTML = topBar(true, 'Cursos') + `
+    <div class="stats" style="margin:4px 0 10px"><span class="pill">⚡ ${xpTotal()} XP en cursos</span></div>
     <p class="muted" style="margin:4px 0 14px">Cada curso tiene 4 lecciones. Cada lección: una explicación corta, un ejemplo resuelto y ${LEC_N} ejercicios en los que escribes tu razonamiento y el tutor lo revisa.</p>
     <h2 class="section">Figuras y espacial</h2><div class="types">${fila('fig')}</div>
     <h2 class="section">Lógica, números y palabras</h2><div class="types">${fila('txt')}</div>`;
   bindGo();
-  $app.querySelectorAll('[data-curso]').forEach(b => b.onclick = () => cursoDialog(b.dataset.curso));
+  $app.querySelectorAll('[data-curso]').forEach(b => b.onclick = () => { CURSO_T = b.dataset.curso; go('curso'); });
 }
-function cursoDialog(t) {
-  const c = cursoDe(t), sig = [0, 1, 2, 3].find(L => !c[L]);
-  openModal(`<h3>${TIPOS[t].n}</h3><p class="muted small" style="margin:0 0 12px">Tu nivel en la práctica: ${NIV_TXT[lvlOf(t)]}. Puedes hacer las lecciones en cualquier orden.</p>
-    <div class="lec-list">${[0, 1, 2, 3].map(L => `<button class="lec-item${L === sig ? ' next' : ''}" data-lec="${L}"><span class="lec-n">${c[L] ? '✓' : L + 1}</span><span><b>Lección ${L + 1} · ${LEC_NOM[L]}</b><small>${c[L] ? `Mejor resultado: ${c[L].ok}/${c[L].n}` : `Explicación + ${LEC_N} ejercicios · ~10 min`}</small></span></button>`).join('')}</div>`);
-  $modal.querySelector('[data-close]').textContent = 'Cerrar';
-  $modal.querySelectorAll('[data-lec]').forEach(b => b.onclick = () => { closeModal(); empezarLeccion(t, +b.dataset.lec); });
+let CURSO_T = null;
+const XP_EJ = 100;
+const xpCurso = t => [0, 1, 2, 3].reduce((a, L) => a + ((cursoDe(t)[L] || {}).xp || 0), 0);
+const xpTotal = () => Object.keys(S.cursos || {}).reduce((a, t) => a + xpCurso(t), 0);
+function renderCurso() {
+  const t = CURSO_T; if (!t || !TIPOS[t]) return go('cursos');
+  const c = cursoDe(t), hechas = [0, 1, 2, 3].filter(L => c[L]).length, sig = [0, 1, 2, 3].find(L => !c[L]);
+  const desc = { 0: 'Las reglas más simples, con ejemplo resuelto.', 1: 'Reglas un poco más elaboradas o combinadas.', 2: 'Reglas menos obvias y más pasos.', 3: 'Lo más difícil de este tipo en la app.' };
+  $app.innerHTML = `<div class="top"><button class="icon-btn" data-go="cursos">${ICON.back} Cursos</button><span class="pill">⚡ ${xpCurso(t)} XP</span></div>
+    <div class="card course-head"><p class="lvl">Curso</p><h1 style="margin:4px 0 6px">${TIPOS[t].n}</h1>
+      <p class="muted small" style="margin:0 0 10px">4 lecciones · ${LEC_N} ejercicios cada una · hasta ${4 * LEC_N * XP_EJ} XP</p>
+      <div class="progress"><i style="width:${hechas * 25}%"></i></div><p class="muted small" style="margin:6px 0 12px">${hechas * 25}% completado</p>
+      <button class="btn primary" id="cont" style="width:100%">${hechas === 4 ? 'Repasar la lección 4' : hechas ? `Continuar curso · Lección ${sig + 1}` : 'Empezar curso'}</button></div>
+    <div class="chapters">${[0, 1, 2, 3].map(L => `<button class="chapter${L === sig ? ' next' : ''}${c[L] ? ' done' : ''}" data-lec="${L}">
+      <span class="lec-n">${c[L] ? '✓' : L + 1}</span>
+      <span class="ch-body"><b>Lección ${L + 1} · ${LEC_NOM[L]}</b><small>${desc[L]}</small>
+      <small class="ch-meta">${c[L] ? `Mejor resultado: ${c[L].ok}/${c[L].n} al primer intento · ${c[L].xp || 0} XP` : `Explicación · ejemplo resuelto · ${LEC_N} ejercicios · ~10 min`}</small></span></button>`).join('')}</div>`;
+  bindGo();
+  document.getElementById('cont').onclick = () => empezarLeccion(t, hechas === 4 ? 3 : sig);
+  $app.querySelectorAll('[data-lec]').forEach(b => b.onclick = () => empezarLeccion(t, +b.dataset.lec));
 }
 async function empezarLeccion(t, L) {
   $app.innerHTML = '<div class="spinner"></div>';
@@ -1471,7 +1488,7 @@ function renderLeccion() {
   if (!LEC) return go('cursos');
   if (LEC.timer) { clearTimeout(LEC.timer); LEC.timer = null; }
   const { t, L } = LEC;
-  const salir = `<button class="icon-btn" id="lec-exit">${ICON.back} Cursos</button>`;
+  const salir = `<button class="icon-btn" id="lec-exit">${ICON.back} Curso</button>`;
   if (LEC.paso === 'explica') {
     const sl = lecSlides(), k = Math.min(LEC.slide, sl.length - 1), ult = k === sl.length - 1;
     $app.innerHTML = `<div class="top">${salir}<span class="muted small" style="font-weight:700">Explicación ${k + 1}/${sl.length}</span></div>
@@ -1483,57 +1500,76 @@ function renderLeccion() {
     const te = document.getElementById('lec-tut-ej'); if (te) te.onclick = () => abrirTutor(LEC.ej);
   } else if (LEC.paso === 'ej') {
     const q = LEC.items[LEC.i], fig = isFigOpts(q), corr = q.order.indexOf(0), fb = !!q.checked;
-    q.t0 = q.t0 || Date.now();
+    q.t0 = q.t0 || Date.now(); q.malas = q.malas || [];
     const opts = q.order.map((orig, pos) => {
       let cls = q.ans === pos ? ' sel' : '';
-      if (fb) cls = pos === corr ? ' right' : pos === q.ans ? ' wrong' : '';
-      return `<button class="opt${cls}" data-pos="${pos}" ${fb ? 'disabled' : ''}><span class="letter">${LETRAS[pos]}</span>${optHtml(q, orig)}</button>`;
+      if (fb) cls = pos === corr ? ' right' : q.malas.includes(pos) || pos === q.ans ? ' wrong' : '';
+      else if (q.malas.includes(pos)) cls = ' wrong tried';
+      return `<button class="opt${cls}" data-pos="${pos}" ${fb || q.malas.includes(pos) ? 'disabled' : ''}><span class="letter">${LETRAS[pos]}</span>${optHtml(q, orig)}</button>`;
     }).join('');
     const ult = LEC.i === LEC.items.length - 1;
+    const intentoTxt = q.malas.length && !fb ? `<div class="trap">✗ La ${q.malas.map(m => LETRAS[m]).join(' y la ')} no ${q.malas.length > 1 ? 'son' : 'es'}. ${esc(falloTxt(q.t, q.it.f ? q.it.f[q.order[q.malas[q.malas.length - 1]]] : ''))} Revisa tu razonamiento e <b>intenta otra vez</b>: el tutor te dice qué revisar sin darte la respuesta.</div>` : '';
     $app.innerHTML = `<div class="top">${salir}<span class="muted small" style="font-weight:700">Ejercicio ${LEC.i + 1}/${LEC.items.length}</span></div>
       <div class="qhead"><div class="progress"><i style="width:${LEC.items.filter(x => x.checked).length / LEC.items.length * 100}%"></i></div></div>
-      <div class="qmeta"><span>${TIPOS[t].n} · Lección ${L + 1}</span><button class="link-btn" id="lec-pista">🤖 Pedir una pista</button></div>
+      <div class="instr"><div class="instr-h"><b>Instrucciones</b><span class="xp" id="lec-xp">⚡ ${xpDe(q)} XP</span></div>
+        <ol><li>${esc(METODO[t][0])}</li><li>Escribe en <b>Tu razonamiento</b> la regla que encontraste. Si quieres, toca <b>Revisar mi razonamiento</b>: el tutor te dice si vas bien, sin darte la respuesta.</li><li>Elige la opción y toca <b>Comprobar</b>. Si fallas, puedes intentarlo otra vez.</li></ol>
+        <p class="muted small" style="margin:6px 0 0">Vale ${XP_EJ} XP · pista −30 · cada intento fallido −30 · ver la solución −70.</p></div>
       ${qBlock(q)}
-      <label class="razon"><span>✍ <b>Tu razonamiento</b> <span class="muted small">(escríbelo como si se lo explicaras a alguien; el tutor lo revisa)</span></span>
+      <label class="razon"><span>✍ <b>Tu razonamiento</b></span>
         <textarea id="lec-razon" rows="3" ${fb ? 'readonly' : ''} placeholder="${esc(lecPlaceholder(t))}">${esc(q.razon || '')}</textarea></label>
+      ${fb ? '' : `<div class="row-actions" style="margin:-4px 0 12px"><button class="chip" id="lec-run" ${q.razon ? '' : 'disabled'}>▶ Revisar mi razonamiento</button><button class="chip" id="lec-pista">💡 Pedir una pista (−30)</button>${q.malas.length ? '<button class="chip" id="lec-sol">Ver la solución (−70)</button>' : ''}</div>`}
       <div class="options${fig ? ' fig' : ''}">${opts}</div>
+      ${intentoTxt}
       ${fb ? `<div id="fb">${feedbackHtml(q)}${q.ok && !q.razon ? '<p class="muted small">✓ Bien. En el próximo, escribe tu razonamiento: así el tutor puede revisar si acertaste por la razón correcta.</p>' : ''}
-        <div class="row-actions"><button class="chip tutor-chip" id="lec-tut">🤖 ${q.ok ? 'Pregúntale al tutor' : 'Ver la explicación del tutor'}</button></div></div>` : ''}
-      <div class="navbar"><div class="in">${fb ? `<button class="btn primary" id="lec-sig">${ult ? 'Ver resumen de la lección' : 'Siguiente ejercicio'}</button>` : `<button class="btn primary" id="lec-check" ${q.ans === null ? 'disabled' : ''}>Comprobar</button>`}</div></div>`;
+        <div class="row-actions"><button class="chip tutor-chip" id="lec-tut">🤖 Pregúntale al tutor</button></div></div>` : ''}
+      <div class="navbar"><div class="in">${fb ? `<button class="btn primary" id="lec-sig">${ult ? 'Ver resumen de la lección' : 'Siguiente ejercicio'}</button>` : `<button class="btn primary" id="lec-check" ${q.ans === null || q.malas.includes(q.ans) ? 'disabled' : ''}>Comprobar</button>`}</div></div>`;
     const ta = document.getElementById('lec-razon');
-    ta.oninput = () => { q.razon = ta.value; };
-    if (!fb) $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { q.ans = +b.dataset.pos; $app.querySelectorAll('.opt').forEach(o => o.classList.toggle('sel', +o.dataset.pos === q.ans)); document.getElementById('lec-check').disabled = false; });
+    const run = document.getElementById('lec-run');
+    ta.oninput = () => { q.razon = ta.value; if (run) run.disabled = !ta.value.trim(); };
+    if (!fb) $app.querySelectorAll('.opt:not([disabled])').forEach(b => b.onclick = () => { q.ans = +b.dataset.pos; $app.querySelectorAll('.opt').forEach(o => o.classList.toggle('sel', +o.dataset.pos === q.ans)); document.getElementById('lec-check').disabled = false; });
+    if (run) run.onclick = () => { q.razon = ta.value.trim(); abrirTutor(q, `Esto es lo que llevo pensado: «${q.razon}». Sin decirme la respuesta ni la letra, dime si voy bien y qué me falta revisar.`, { forzar: true, libre: true }); };
+    const revelar = () => { q.checked = true; q.ok = q.order[q.ans] === 0; q.time = (Date.now() - q.t0) / 1000; renderLeccion(); };
     const ck = document.getElementById('lec-check'); if (ck) ck.onclick = () => {
-      q.razon = (ta.value || '').trim(); q.checked = true; q.ok = q.order[q.ans] === 0; q.time = (Date.now() - q.t0) / 1000;
-      renderLeccion();
-      const letra = LETRAS[q.ans];
-      if (q.razon) abrirTutor(q, `Mi razonamiento fue: «${q.razon}». Marqué la ${letra} y ${q.ok ? 'acerté' : 'fallé'}. Revisa mi razonamiento: dime qué está bien, qué falla y cómo debí pensarlo.`);
-      else if (!q.ok) abrirTutor(q, `Marqué la ${letra} y fallé. ¿Por qué me equivoqué? Explícamelo paso a paso, de forma sencilla.`);
+      q.razon = (ta.value || '').trim();
+      const letra = LETRAS[q.ans], bien = q.order[q.ans] === 0;
+      if (bien) {
+        q.primera = !q.malas.length; revelar();
+        if (q.razon) abrirTutor(q, `Mi razonamiento fue: «${q.razon}». Marqué la ${letra} y acerté. Revisa mi razonamiento: dime si acerté por la razón correcta o si algo estaba mal.`, { forzar: true });
+        return;
+      }
+      q.malas.push(q.ans);
+      if (q.malas.length >= 2) { revelar(); abrirTutor(q, `Fallé dos veces (marqué ${q.malas.map(m => LETRAS[m]).join(' y ')}).${q.razon ? ` Mi razonamiento fue: «${q.razon}».` : ''} Explícame paso a paso cómo se resolvía y en qué me equivoqué.`, { forzar: true }); return; }
+      q.ans = null; renderLeccion();
+      abrirTutor(q, `Marqué la ${letra} y fallé.${q.razon ? ` Mi razonamiento fue: «${q.razon}».` : ''} Sin decirme la respuesta ni la letra correcta, dime qué parte de mi idea está mal y qué debería revisar para intentarlo otra vez.`, { forzar: true, libre: true });
     };
-    const lt = document.getElementById('lec-tut'); if (lt) lt.onclick = () => abrirTutor(q, q.ok ? null : `Marqué la ${LETRAS[q.ans]} y fallé. ¿Por qué me equivoqué? Explícamelo paso a paso, de forma sencilla.`);
-    document.getElementById('lec-pista').onclick = () => abrirTutor(q, fb ? null : 'Dame una pista pequeña para empezar, sin decirme la respuesta.');
+    const so = document.getElementById('lec-sol'); if (so) so.onclick = () => { q.sol = true; q.ans = q.ans === null ? q.malas[q.malas.length - 1] : q.ans; revelar(); abrirTutor(q, 'Muéstrame la solución paso a paso y explícame en qué me equivoqué.', { forzar: true }); };
+    const lt = document.getElementById('lec-tut'); if (lt) lt.onclick = () => abrirTutor(q);
+    const lp = document.getElementById('lec-pista'); if (lp) lp.onclick = () => abrirTutor(q, 'Dame una pista pequeña, sin decirme la respuesta.', { forzar: true });
     const sg = document.getElementById('lec-sig'); if (sg) sg.onclick = () => { if (ult) lecTerminar(); else { LEC.i++; renderLeccion(); } window.scrollTo(0, 0); };
     tutorSeguir(q);
     // el tutor "mira": si llevas 2 minutos sin responder, te ofrece ayuda
     if (!fb) LEC.timer = setTimeout(() => {
       if (VIEW !== 'leccion' || q.checked || TP.busy) return;
       const m = tpMsgs(q); if (m.some(x => x.r === 'u')) return;
-      m.push({ r: 'a', t: 'Llevas 2 minutos en este ejercicio. ¿Te ayudo? Toca **Dame una pista** o escríbeme lo que llevas pensado y te digo si vas bien.', local: true });
+      m.push({ r: 'a', t: 'Llevas 2 minutos en este ejercicio. ¿Te ayudo? Escríbeme lo que llevas pensado y te digo si vas bien, o toca **Dame una pista**.', local: true });
       abrirTutor(q);
     }, 120000);
   } else {
-    const ok = LEC.items.filter(q => q.ok).length, n = LEC.items.length;
+    const ok = LEC.items.filter(q => q.primera).length, n = LEC.items.length;
     $app.innerHTML = `<div class="top">${salir}<span></span></div>
-      <div class="card"><div class="score">${ring(ok / n)}<div><h1>${ok} de ${n}</h1><p>Lección ${L + 1} de ${TIPOS[t].n} completada</p></div></div></div>
-      <div class="card">${LEC.items.map((q, j) => `<div class="kv"><span>${q.ok ? '✓' : '✗'} Ejercicio ${j + 1} <span class="muted small">· ${esc(reglaTxt(t, q.it.r))}</span></span><span class="muted small">${q.razon ? '✍ con razonamiento' : ''}</span></div>`).join('')}</div>
+      <div class="card"><div class="score">${ring(ok / n)}<div><h1>${ok} de ${n}</h1><p>al primer intento · Lección ${L + 1} de ${TIPOS[t].n}</p></div></div></div>
+      <div class="card"><div class="kv"><span><b>XP ganados</b></span><span><b>⚡ ${LEC.items.reduce((a, q) => a + xpDe(q), 0)} de ${n * XP_EJ}</b></span></div>${LEC.items.map((q, j) => `<div class="kv"><span>${q.primera ? '✓' : q.ok ? '↻' : '✗'} Ejercicio ${j + 1} <span class="muted small">· ${esc(reglaTxt(t, q.it.r))}</span></span><span class="muted small">${q.primera ? 'al primer intento' : q.ok ? 'al segundo intento' : q.sol ? 'viste la solución' : 'fallado'} · ${xpDe(q)} XP</span></div>`).join('')}</div>
       <p class="muted small">${ok < n ? 'Los ejercicios que fallaste vuelven como repasos mañana, en 3 días y en 7 días. ' : ''}${ok >= 4 ? 'Vas bien: puedes pasar a la siguiente lección.' : 'Te recomiendo repetir la lección con ejercicios nuevos antes de seguir.'}</p>
-      <div class="navbar"><div class="in"><button class="btn ghost" id="lec-rep">Repetir</button>${L < 3 ? `<button class="btn primary" id="lec-next-l">Lección ${L + 2}</button>` : `<button class="btn primary" data-go="cursos">Ver cursos</button>`}</div></div>`;
+      <div class="navbar"><div class="in"><button class="btn ghost" id="lec-rep">Repetir</button><button class="btn ghost" id="lec-mapa">Curso</button>${L < 3 ? `<button class="btn primary" id="lec-next-l">Lección ${L + 2}</button>` : `<button class="btn primary" data-go="cursos">Ver cursos</button>`}</div></div>`;
     bindGo();
     document.getElementById('lec-rep').onclick = () => empezarLeccion(t, L);
     const nl = document.getElementById('lec-next-l'); if (nl) nl.onclick = () => empezarLeccion(t, L + 1);
+    document.getElementById('lec-mapa').onclick = () => { CURSO_T = t; go('curso'); };
   }
-  document.getElementById('lec-exit').onclick = () => { if (LEC.paso === 'ej' && LEC.items.some(q => q.checked) && !confirmarSalida()) return; go('cursos'); };
+  document.getElementById('lec-exit').onclick = () => { if (LEC.paso === 'ej' && LEC.items.some(q => q.checked) && !confirmarSalida()) return; CURSO_T = LEC.t; go('curso'); };
 }
+function xpDe(q) { if (q.ejemplo) return 0; if (q.checked && !q.ok) return 0; let x = XP_EJ - (q.hint ? 30 : 0) - 30 * ((q.malas || []).length) - (q.sol ? 70 : 0); return Math.max(0, x); }
+function lecPintaXP() { const e = document.getElementById('lec-xp'); if (e && LEC && LEC.items[LEC.i]) e.textContent = `⚡ ${xpDe(LEC.items[LEC.i])} XP`; }
 function confirmarSalida() { return window.confirm('¿Salir de la lección? Perderás el avance de esta lección.'); }
 function lecPlaceholder(t) {
   const g = TIPOS[t].g;
@@ -1542,11 +1578,12 @@ function lecPlaceholder(t) {
   return 'Ej.: «Cada número resta 4, entonces sigue 58» o «Si Ana miente, entonces…»';
 }
 function lecTerminar() {
-  const { t, L, items } = LEC, ok = items.filter(q => q.ok).length, today = hoy(), id = Date.now();
+  const { t, L, items } = LEC, ok = items.filter(q => q.primera).length, xp = items.reduce((a, q) => a + xpDe(q), 0), today = hoy(), id = Date.now();
   S.cursos = S.cursos || {}; S.cursos[t] = S.cursos[t] || {};
   const prev = S.cursos[t][L];
-  if (!prev || ok >= prev.ok) S.cursos[t][L] = { ok, n: items.length, date: today };
-  items.forEach((q, j) => { if (!q.ok) [1, 3, 7].forEach(d => S.rev.push({ id: `lec${id}-${j}-${d}`, src: `lec${id}-${j}`, t, r: q.it.r, due: addDays(today, d), done: false })); });
+  if (!prev || ok > prev.ok || (ok === prev.ok && xp >= (prev.xp || 0))) S.cursos[t][L] = { ok, n: items.length, xp: Math.max(xp, (prev && prev.xp) || 0), date: today };
+  else S.cursos[t][L].xp = Math.max(prev.xp || 0, xp);
+  items.forEach((q, j) => { if (!q.primera) [1, 3, 7].forEach(d => S.rev.push({ id: `lec${id}-${j}-${d}`, src: `lec${id}-${j}`, t, r: q.it.r, due: addDays(today, d), done: false })); });
   save(); LEC.paso = 'fin'; renderLeccion();
 }
 
