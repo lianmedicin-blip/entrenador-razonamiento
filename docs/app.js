@@ -1059,7 +1059,7 @@ function renderSettings() {
       <p><b>Corrige al instante y te pregunta por qué fallaste.</b> Explicarte el error y revisar con calma los errores que cometiste estando seguro ayuda a no repetirlos.</p>
       <p><b>Ejemplos resueltos al empezar.</b> En los primeros niveles te muestra un ejemplo resuelto paso a paso; al subir de nivel deja de mostrarlos, porque ya estorban.</p>
       <p><b>Preguntas comprobadas.</b> Las de figuras y las de lógica se comprueban por código para que solo una opción sea correcta; en las numéricas la respuesta se calcula. Las analogías verbales están escritas a mano. Si ves una pregunta que crees mal hecha, avísale a quien te ayuda a mantener la app.</p>
-      <p class="muted small">Versión de la app: 2026-11-03 · tutor 6 (panel)</p>
+      <p class="muted small">Versión de la app: 2026-11-03 · tutor 7</p>
       <p style="margin-bottom:0" class="muted">Código abierto: <a href="https://github.com/lianmedicin-blip/entrenador-razonamiento" target="_blank" rel="noopener">github.com/lianmedicin-blip/entrenador-razonamiento</a></p>
     </div>`;
   bindGo();
@@ -1098,7 +1098,7 @@ Reglas:
 - Si te pasa un enlace de YouTube que puedes ver, resume qué explica y da los minutos exactos (MM:SS) de las partes útiles. Si no puedes ver el video, dilo claramente.`;
 let TUTOR = null; // { ai, aiMod, cache: {nombre: {model, searchModel}} }
 // Google retira y satura modelos: se prueba en este orden. Si uno fue retirado, se salta para siempre.
-const TUT_MODELOS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
+const TUT_MODELOS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-flash-latest'];
 const TUT_PIENSA = { 'gemini-3.8-flash': 'low' }; // pensar poco = responde más rápido
 let TUT_MI = 0; try { TUT_MI = Math.min(+localStorage.getItem('avz_tut_m2') || 0, TUT_MODELOS.length - 1); } catch (e) {}
 const TUT_SIN_PIENSA = {};
@@ -1131,11 +1131,13 @@ function conTiempo(pr, ms) {
 }
 // Si el modelo fue retirado, pasa al siguiente para siempre. Si está saturado o tarda, reintenta y luego
 // prueba los otros modelos solo para esta respuesta. avisa(texto) muestra en pantalla qué está pasando.
+let TUT_OK = null; // si el primer modelo falló hace poco, empezar por el que sí respondió (10 min)
 async function conModelo(fn, avisa = () => {}) {
-  let idx = TUT_MI, intentos = 0;
+  let idx = TUT_OK && TUT_OK.hasta > Date.now() ? Math.max(TUT_MI, TUT_OK.idx) : TUT_MI, intentos = 0;
   for (;;) {
-    const M = await tutorInit(idx);
-    try { return await fn(M); }
+    const M = await conTiempo(tutorInit(idx), 20000);
+    TP.modelo = M.name;
+    try { const r = await fn(M); if (idx > TUT_MI) TUT_OK = { idx, hasta: Date.now() + 600000 }; return r; }
     catch (e) {
       try { console.warn('Tutor', M.name, e); } catch (x) {}
       const hay = idx < TUT_MODELOS.length - 1;
@@ -1278,7 +1280,7 @@ function tpRender() {
   else intro = '<p class="muted small">Pregúntame lo que quieras sobre esta pregunta: por qué fallaste, un dibujo, una parecida o un video.</p>';
   log.innerHTML = intro + msgs.map(m => `<div class="tm ${m.r}">${m.r === 'u' ? esc(m.t) : (m.t ? mdLite(m.t) : '<span class="dots"><i></i><i></i><i></i></span>')}</div>`).join('');
   log.scrollTop = log.scrollHeight;
-  el.querySelector('#tp-st').textContent = TP.status;
+  tpPinta();
   const ch = el.querySelector('#tp-chips');
   ch.innerHTML = modo === 'off' ? '' : tpChips(q, modo).map(([l, t], i) => `<button class="chip${i === 0 ? ' tutor-chip' : ''}" data-i="${i}">${l}</button>`).join('');
   const lista = tpChips(q, modo);
@@ -1287,7 +1289,9 @@ function tpRender() {
   send.textContent = TP.busy ? 'Detener' : 'Enviar'; send.classList.toggle('stop', TP.busy);
   inp.disabled = modo === 'off'; send.disabled = modo === 'off';
 }
-function tpEstado(t) { TP.status = t; const st = document.getElementById('tp-st'); if (st) st.textContent = t; }
+function tpEstado(t) { TP.status = t; TP.t0 = Date.now(); tpPinta(); }
+function tpPinta() { const st = document.getElementById('tp-st'); if (!st) return; st.textContent = TP.status ? `${TP.status} · ${Math.round((Date.now() - (TP.t0 || Date.now())) / 1000)} s${TP.modelo ? ' · ' + TP.modelo : ''}` : ''; }
+setInterval(() => { if (TP.busy) tpPinta(); }, 1000);
 function tpDetener(silencio) {
   if (!TP.busy) return;
   TP.gen++; TP.busy = false; tpEstado('');
@@ -1305,7 +1309,7 @@ async function tpEnviar(texto) {
   if (modo === 'pista' && !q.hint && VIEW === 'quiz') { q.hint = true; saveCur(); }
   const msgs = tpMsgs(q), previos = msgs.slice();
   msgs.push({ r: 'u', t: texto, modo }); const out = { r: 'a', t: '' }; msgs.push(out);
-  const gen = ++TP.gen; TP.busy = true; TP.out = out; TP.status = 'Pensando…'; tpRender();
+  const gen = ++TP.gen; TP.busy = true; TP.out = out; TP.status = 'Pensando…'; TP.t0 = Date.now(); tpRender();
   const vivo = () => gen === TP.gen;
   try {
     const yt = texto.match(/https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)[\w\-?=&]+/i);
@@ -1313,20 +1317,26 @@ async function tpEnviar(texto) {
     await conModelo(async M => {
       const chat = M.model.startChat({ history: [{ role: 'user', parts: [{ text: 'Esta es la pregunta:\n' + contextoPregunta(q, modo) }] }, { role: 'model', parts: [{ text: 'Entendido. ¿Qué quieres saber?' }] }].concat(tpHistorial(previos)) });
       out.t = '';
-      const res = await conTiempo(chat.sendMessageStream(parts), yt ? 120000 : 40000);
+      const res = await conTiempo(chat.sendMessageStream(parts), yt ? 120000 : 25000);
       if (!vivo()) return;
       tpEstado('Escribiendo…');
-      for await (const c of res.stream) { if (!vivo()) return; try { out.t += c.text(); } catch (x) {} tpRender(); }
+      const it = res.stream[Symbol.asyncIterator]();
+      for (;;) {
+        const { value: c, done } = await conTiempo(it.next(), out.t ? 30000 : 25000);
+        if (done || !vivo()) break;
+        try { out.t += c.text(); } catch (x) {}
+        tpRender();
+      }
       if (!out.t) throw Object.assign(new Error('Respuesta vacía'), { tutTiempo: true });
     }, t => { if (vivo()) { tpEstado(t); } });
   } catch (e) { if (vivo()) out.t = '⚠ ' + tutorError(e); }
-  if (vivo()) { TP.busy = false; TP.status = ''; tpRender(); }
+  if (vivo()) { TP.busy = false; TP.status = ''; TP.modelo = ''; tpRender(); }
 }
 async function tpVideo() {
   const q = TP.q; if (!q || TP.busy) return;
   const t = q.t, msgs = tpMsgs(q);
   msgs.push({ r: 'u', t: 'Búscame un video que explique este tipo de pregunta.' }); const out = { r: 'a', t: '' }; msgs.push(out);
-  const gen = ++TP.gen; TP.busy = true; TP.out = out; TP.status = 'Buscando videos en internet…'; tpRender();
+  const gen = ++TP.gen; TP.busy = true; TP.out = out; TP.status = 'Buscando videos en internet…'; TP.t0 = Date.now(); tpRender();
   const vivo = () => gen === TP.gen;
   try {
     const r = await conModelo(M => conTiempo(M.searchModel.generateContent(`Busca en internet 2 o 3 videos de YouTube en español que expliquen bien cómo resolver preguntas psicotécnicas de tipo «${TIPOS[t].n}» (${TIPOS[t].yt}). Para cada uno da: título, canal, el enlace directo de YouTube (https://www.youtube.com/watch?v=...) y en una línea por qué sirve. Si no estás seguro de un enlace, no lo pongas. Al final dile que, si pega uno de esos enlaces aquí, le dices los minutos exactos que le sirven.`), 60000), t2 => { if (vivo()) tpEstado(t2); });
@@ -1334,7 +1344,7 @@ async function tpVideo() {
   } catch (e) {
     if (vivo()) out.t = `No pude buscar videos automáticamente (${tutorError(e)}). Aquí tienes una búsqueda en YouTube: ${ytLink(t)} — si pegas aquí el enlace de un video, te digo qué explica y en qué minutos.`;
   }
-  if (vivo()) { TP.busy = false; TP.status = ''; tpRender(); }
+  if (vivo()) { TP.busy = false; TP.status = ''; TP.modelo = ''; tpRender(); }
 }
 
 initSync();
