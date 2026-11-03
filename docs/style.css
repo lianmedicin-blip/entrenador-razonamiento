@@ -203,3 +203,13 @@ details.review > summary::-webkit-details-marker { display: none; }
 details.review[open] > summary { margin-bottom: 10px; }
 details.review { padding: 14px 16px; }
 input.pw { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; }
+
+.tut-log { max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+.tm { padding: 10px 12px; border-radius: 14px; font-size: 15px; line-height: 1.5; max-width: 92%; word-wrap: break-word; }
+.tm.u { align-self: flex-end; background: var(--primary); color: var(--primary-ink); border-bottom-right-radius: 4px; }
+.tm.a { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 4px; }
+.tm pre.code { margin: 6px 0; font-size: 13px; white-space: pre; }
+.tut-in { display: flex; gap: 8px; margin-top: 6px; }
+.tut-in input { flex: 1; font: inherit; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); min-width: 0; }
+.tut-in .btn { flex: none; padding: 12px 16px; }
+.tutor-chip { border-color: var(--primary); color: var(--primary); }
