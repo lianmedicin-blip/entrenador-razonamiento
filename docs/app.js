@@ -1056,7 +1056,7 @@ function renderSettings() {
       <p><b>Corrige al instante y te pregunta por qué fallaste.</b> Explicarte el error y revisar con calma los errores que cometiste estando seguro ayuda a no repetirlos.</p>
       <p><b>Ejemplos resueltos al empezar.</b> En los primeros niveles te muestra un ejemplo resuelto paso a paso; al subir de nivel deja de mostrarlos, porque ya estorban.</p>
       <p><b>Preguntas comprobadas.</b> Las de figuras y las de lógica se comprueban por código para que solo una opción sea correcta; en las numéricas la respuesta se calcula. Las analogías verbales están escritas a mano. Si ves una pregunta que crees mal hecha, avísale a quien te ayuda a mantener la app.</p>
-      <p class="muted small">Versión de la app: 2026-11-03 · tutor 4</p>
+      <p class="muted small">Versión de la app: 2026-11-03 · tutor 5</p>
       <p style="margin-bottom:0" class="muted">Código abierto: <a href="https://github.com/lianmedicin-blip/entrenador-razonamiento" target="_blank" rel="noopener">github.com/lianmedicin-blip/entrenador-razonamiento</a></p>
     </div>`;
   bindGo();
@@ -1097,14 +1097,14 @@ let TUTOR = null; // { ai, aiMod, name, model, searchModel }
 // Google retira modelos con el tiempo: si uno ya no está disponible, se pasa solo al siguiente.
 const TUT_MODELOS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
 let TUT_MI = 0; try { TUT_MI = Math.min(+localStorage.getItem('avz_tut_m') || 0, TUT_MODELOS.length - 1); } catch (e) {}
-async function tutorInit() {
+async function tutorInit(idx = TUT_MI) {
   if (!TUTOR) {
     const appMod = await import(`https://www.gstatic.com/firebasejs/${AI_VER}/firebase-app.js`);
     const aiMod = await import(`https://www.gstatic.com/firebasejs/${AI_VER}/firebase-ai.js`);
     const app = appMod.getApps().find(a => a.name === 'tutor') || appMod.initializeApp(FIREBASE_CONFIG, 'tutor');
     TUTOR = { aiMod, ai: aiMod.getAI(app, { backend: new aiMod.GoogleAIBackend() }) };
   }
-  const name = TUT_MODELOS[TUT_MI];
+  const name = TUT_MODELOS[idx];
   if (TUTOR.name !== name) {
     TUTOR.name = name;
     TUTOR.model = TUTOR.aiMod.getGenerativeModel(TUTOR.ai, { model: name, systemInstruction: TUTOR_SYS });
@@ -1115,14 +1115,22 @@ async function tutorInit() {
 }
 function modeloNoDisponible(e) { return /\[404|no longer available|NOT_FOUND|is not found|not supported for/i.test((e && e.message) || ''); }
 function errorPasajero(e) { return /\[(500|503|429)|high demand|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test((e && e.message) || ''); }
+// Si el modelo fue retirado, pasa al siguiente para siempre. Si está saturado, reintenta 2 veces y luego prueba
+// los otros modelos solo para esta respuesta.
 async function conModelo(fn) {
-  let intentos = 0;
+  let idx = TUT_MI, intentos = 0;
   for (;;) {
-    const T = await tutorInit();
+    const T = await tutorInit(idx);
     try { return await fn(T); }
     catch (e) {
-      if (modeloNoDisponible(e) && TUT_MI < TUT_MODELOS.length - 1) { TUT_MI++; try { localStorage.setItem('avz_tut_m', TUT_MI); } catch (x) {} continue; }
-      if (errorPasajero(e) && intentos < 3) { await new Promise(r => setTimeout(r, [2000, 4000, 8000][intentos++])); continue; }
+      if (modeloNoDisponible(e) && idx < TUT_MODELOS.length - 1) {
+        idx++; if (idx > TUT_MI) { TUT_MI = idx; try { localStorage.setItem('avz_tut_m', TUT_MI); } catch (x) {} }
+        continue;
+      }
+      if (errorPasajero(e)) {
+        if (intentos < 2) { await new Promise(r => setTimeout(r, [1500, 4000][intentos++])); continue; }
+        if (idx < TUT_MODELOS.length - 1) { idx++; intentos = 0; continue; }
+      }
       throw e;
     }
   }
