@@ -1067,7 +1067,7 @@ function renderSettings() {
       <p><b>Corrige al instante y te pregunta por qué fallaste.</b> Explicarte el error y revisar con calma los errores que cometiste estando seguro ayuda a no repetirlos.</p>
       <p><b>Ejemplos resueltos al empezar.</b> En los primeros niveles te muestra un ejemplo resuelto paso a paso; al subir de nivel deja de mostrarlos, porque ya estorban.</p>
       <p><b>Preguntas comprobadas.</b> Las de figuras y las de lógica se comprueban por código para que solo una opción sea correcta; en las numéricas la respuesta se calcula. Las analogías verbales están escritas a mano. Si ves una pregunta que crees mal hecha, avísale a quien te ayuda a mantener la app.</p>
-      <p class="muted small">Versión de la app: 2026-11-03 · cursos 1</p>
+      <p class="muted small">Versión de la app: 2026-11-03 · cursos 2</p>
       <p style="margin-bottom:0" class="muted">Código abierto: <a href="https://github.com/lianmedicin-blip/entrenador-razonamiento" target="_blank" rel="noopener">github.com/lianmedicin-blip/entrenador-razonamiento</a></p>
     </div>`;
   bindGo();
@@ -1267,7 +1267,7 @@ function abrirTutor(q, pedir) {
   document.body.classList.add('tp-on');
   tpRender();
   if (pedir && !tpMsgs(q).some(m => m.r === 'u' && m.modo === tpModo(q))) tpEnviar(pedir);
-  else if (window.innerWidth >= 1000) el.querySelector('#tp-txt').focus();
+  else if (window.innerWidth >= 760) el.querySelector('#tp-txt').focus();
 }
 function tutorCerrar() { tpDetener(true); const el = document.getElementById('tpanel'); if (el) el.hidden = true; document.body.classList.remove('tp-on', 'tp-min'); }
 // al cambiar de pregunta con el panel abierto, el tutor pasa a la nueva (sin escribir nada solo)
